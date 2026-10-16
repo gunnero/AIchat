@@ -47,4 +47,4 @@ The first release includes admin knowledge uploads. Customer document uploads ar
 - Danish proposal: `output/pdf/AI-Kundetypeassistent-projektforslag-DA.pdf`
 - English review: `output/pdf/AI-Kundetypeassistent-project-proposal-EN.pdf`
 
-The proposals contain the supporting OpenAI, EDPB and OWASP references. Recheck current implementation documentation when each task starts. The repository currently contains planning/design work locally; no working product has been implemented or verified.
+The proposals contain the supporting OpenAI, EDPB and OWASP references. Recheck current implementation documentation when each task starts. The first batch now has an implemented local demo in `app/`, with synthetic data and no production integrations. See the architecture, decision register and testing guide in `docs/`, plus `app/design-qa.md` for browser evidence. Production security, real AI performance and GDPR operations remain unimplemented later tasks.
