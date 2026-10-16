@@ -2,7 +2,7 @@
 
 [Live GitHub roadmap](https://github.com/gunnero/AIchat/issues/1) · [Milestones](https://github.com/gunnero/AIchat/milestones)
 
-This file is a link index. GitHub Issues is the source of truth for current status. All issues were created open; no implementation is represented as complete.
+This file is a link index. GitHub Issues is the source of truth for current status. The first batch (AK-001–AK-009) is implemented and ready for review in [PR #60](https://github.com/gunnero/AIchat/pull/60). GitHub issues remain open until the implementation is merged. Later milestones are still planned.
 
 First build batch: AK-001–AK-009. Prepare AK-010–AK-011 alongside it, then measure the synthetic-data AI pilot in AK-012–AK-014. Privacy and supplier decisions begin as soon as their inputs are available.
 

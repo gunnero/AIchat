@@ -12,7 +12,7 @@ Date: 16 October 2026. final result: passed
 - [Focused conversation comparison](../docs/screenshots/comparison-detail.png): identical x=330, y=100, width=1157, height=690 regions, side by side at original density. This makes typography, bubbles, logo and copy controls readable.
 - [First comparison](../docs/screenshots/comparison-first.png), [tablet](../docs/screenshots/tablet.png), [mobile](../docs/screenshots/mobile.png), [mobile sharing](../docs/screenshots/mobile-share.png), [admin](../docs/screenshots/admin.png).
 
-The browser panel clipped a larger viewport in viewport-only captures. Full-page captures were used to obtain the complete 1487px layout; DOM width and image dimensions were checked. An initial mobile capture occurred before paint and was discarded; the saved final evidence contains the rendered app.
+The browser panel clipped a larger viewport in viewport-only captures. Full-page captures were used to obtain the complete 1487px layout; DOM width and image dimensions were checked. Initial mobile/tablet captures occurred before paint and were replaced; the saved final evidence contains the rendered app.
 
 ## Findings and comparison history
 
