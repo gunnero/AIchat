@@ -1,0 +1,289 @@
+{
+  "repository": "gunnero/AIchat",
+  "created_from": "2026-10-16",
+  "milestones": {
+    "M0": {
+      "number": 1,
+      "html_url": "https://github.com/gunnero/AIchat/milestone/1",
+      "title": "01 - Foundation"
+    },
+    "M1": {
+      "number": 2,
+      "html_url": "https://github.com/gunnero/AIchat/milestone/2",
+      "title": "02 - Prototype and AI pilot"
+    },
+    "M2": {
+      "number": 3,
+      "html_url": "https://github.com/gunnero/AIchat/milestone/3",
+      "title": "03 - Accounts and access"
+    },
+    "M3": {
+      "number": 4,
+      "html_url": "https://github.com/gunnero/AIchat/milestone/4",
+      "title": "04 - Private chats and sharing"
+    },
+    "M4": {
+      "number": 5,
+      "html_url": "https://github.com/gunnero/AIchat/milestone/5",
+      "title": "05 - Packages and usage"
+    },
+    "M5": {
+      "number": 6,
+      "html_url": "https://github.com/gunnero/AIchat/milestone/6",
+      "title": "06 - Production AI integration"
+    },
+    "M6": {
+      "number": 7,
+      "html_url": "https://github.com/gunnero/AIchat/milestone/7",
+      "title": "07 - Privacy and data lifecycle"
+    },
+    "M7": {
+      "number": 8,
+      "html_url": "https://github.com/gunnero/AIchat/milestone/8",
+      "title": "08 - Verification and launch"
+    },
+    "LATER": {
+      "number": 9,
+      "html_url": "https://github.com/gunnero/AIchat/milestone/9",
+      "title": "Later - Optional extensions"
+    }
+  },
+  "tasks": {
+    "AK-001": {
+      "number": 2,
+      "url": "https://github.com/gunnero/AIchat/issues/2"
+    },
+    "AK-002": {
+      "number": 3,
+      "url": "https://github.com/gunnero/AIchat/issues/3"
+    },
+    "AK-003": {
+      "number": 4,
+      "url": "https://github.com/gunnero/AIchat/issues/4"
+    },
+    "AK-004": {
+      "number": 5,
+      "url": "https://github.com/gunnero/AIchat/issues/5"
+    },
+    "AK-005": {
+      "number": 6,
+      "url": "https://github.com/gunnero/AIchat/issues/6"
+    },
+    "AK-006": {
+      "number": 7,
+      "url": "https://github.com/gunnero/AIchat/issues/7"
+    },
+    "AK-007": {
+      "number": 8,
+      "url": "https://github.com/gunnero/AIchat/issues/8"
+    },
+    "AK-008": {
+      "number": 9,
+      "url": "https://github.com/gunnero/AIchat/issues/9"
+    },
+    "AK-009": {
+      "number": 10,
+      "url": "https://github.com/gunnero/AIchat/issues/10"
+    },
+    "AK-010": {
+      "number": 11,
+      "url": "https://github.com/gunnero/AIchat/issues/11"
+    },
+    "AK-011": {
+      "number": 12,
+      "url": "https://github.com/gunnero/AIchat/issues/12"
+    },
+    "AK-012": {
+      "number": 13,
+      "url": "https://github.com/gunnero/AIchat/issues/13"
+    },
+    "AK-013": {
+      "number": 14,
+      "url": "https://github.com/gunnero/AIchat/issues/14"
+    },
+    "AK-014": {
+      "number": 15,
+      "url": "https://github.com/gunnero/AIchat/issues/15"
+    },
+    "AK-015": {
+      "number": 16,
+      "url": "https://github.com/gunnero/AIchat/issues/16"
+    },
+    "AK-016": {
+      "number": 17,
+      "url": "https://github.com/gunnero/AIchat/issues/17"
+    },
+    "AK-017": {
+      "number": 18,
+      "url": "https://github.com/gunnero/AIchat/issues/18"
+    },
+    "AK-018": {
+      "number": 19,
+      "url": "https://github.com/gunnero/AIchat/issues/19"
+    },
+    "AK-019": {
+      "number": 20,
+      "url": "https://github.com/gunnero/AIchat/issues/20"
+    },
+    "AK-020": {
+      "number": 21,
+      "url": "https://github.com/gunnero/AIchat/issues/21"
+    },
+    "AK-021": {
+      "number": 22,
+      "url": "https://github.com/gunnero/AIchat/issues/22"
+    },
+    "AK-022": {
+      "number": 23,
+      "url": "https://github.com/gunnero/AIchat/issues/23"
+    },
+    "AK-023": {
+      "number": 24,
+      "url": "https://github.com/gunnero/AIchat/issues/24"
+    },
+    "AK-024": {
+      "number": 25,
+      "url": "https://github.com/gunnero/AIchat/issues/25"
+    },
+    "AK-025": {
+      "number": 26,
+      "url": "https://github.com/gunnero/AIchat/issues/26"
+    },
+    "AK-026": {
+      "number": 27,
+      "url": "https://github.com/gunnero/AIchat/issues/27"
+    },
+    "AK-027": {
+      "number": 28,
+      "url": "https://github.com/gunnero/AIchat/issues/28"
+    },
+    "AK-028": {
+      "number": 29,
+      "url": "https://github.com/gunnero/AIchat/issues/29"
+    },
+    "AK-029": {
+      "number": 30,
+      "url": "https://github.com/gunnero/AIchat/issues/30"
+    },
+    "AK-030": {
+      "number": 31,
+      "url": "https://github.com/gunnero/AIchat/issues/31"
+    },
+    "AK-031": {
+      "number": 32,
+      "url": "https://github.com/gunnero/AIchat/issues/32"
+    },
+    "AK-032": {
+      "number": 33,
+      "url": "https://github.com/gunnero/AIchat/issues/33"
+    },
+    "AK-033": {
+      "number": 34,
+      "url": "https://github.com/gunnero/AIchat/issues/34"
+    },
+    "AK-034": {
+      "number": 35,
+      "url": "https://github.com/gunnero/AIchat/issues/35"
+    },
+    "AK-035": {
+      "number": 36,
+      "url": "https://github.com/gunnero/AIchat/issues/36"
+    },
+    "AK-036": {
+      "number": 37,
+      "url": "https://github.com/gunnero/AIchat/issues/37"
+    },
+    "AK-037": {
+      "number": 38,
+      "url": "https://github.com/gunnero/AIchat/issues/38"
+    },
+    "AK-038": {
+      "number": 39,
+      "url": "https://github.com/gunnero/AIchat/issues/39"
+    },
+    "AK-039": {
+      "number": 40,
+      "url": "https://github.com/gunnero/AIchat/issues/40"
+    },
+    "AK-040": {
+      "number": 41,
+      "url": "https://github.com/gunnero/AIchat/issues/41"
+    },
+    "AK-041": {
+      "number": 42,
+      "url": "https://github.com/gunnero/AIchat/issues/42"
+    },
+    "AK-042": {
+      "number": 43,
+      "url": "https://github.com/gunnero/AIchat/issues/43"
+    },
+    "AK-043": {
+      "number": 44,
+      "url": "https://github.com/gunnero/AIchat/issues/44"
+    },
+    "AK-044": {
+      "number": 45,
+      "url": "https://github.com/gunnero/AIchat/issues/45"
+    },
+    "AK-045": {
+      "number": 46,
+      "url": "https://github.com/gunnero/AIchat/issues/46"
+    },
+    "AK-046": {
+      "number": 47,
+      "url": "https://github.com/gunnero/AIchat/issues/47"
+    },
+    "AK-047": {
+      "number": 48,
+      "url": "https://github.com/gunnero/AIchat/issues/48"
+    },
+    "AK-048": {
+      "number": 49,
+      "url": "https://github.com/gunnero/AIchat/issues/49"
+    },
+    "AK-049": {
+      "number": 50,
+      "url": "https://github.com/gunnero/AIchat/issues/50"
+    },
+    "AK-050": {
+      "number": 51,
+      "url": "https://github.com/gunnero/AIchat/issues/51"
+    },
+    "AK-051": {
+      "number": 52,
+      "url": "https://github.com/gunnero/AIchat/issues/52"
+    },
+    "AK-052": {
+      "number": 53,
+      "url": "https://github.com/gunnero/AIchat/issues/53"
+    },
+    "AK-053": {
+      "number": 54,
+      "url": "https://github.com/gunnero/AIchat/issues/54"
+    },
+    "AK-054": {
+      "number": 55,
+      "url": "https://github.com/gunnero/AIchat/issues/55"
+    },
+    "AK-055": {
+      "number": 56,
+      "url": "https://github.com/gunnero/AIchat/issues/56"
+    },
+    "AK-056": {
+      "number": 57,
+      "url": "https://github.com/gunnero/AIchat/issues/57"
+    },
+    "AK-057": {
+      "number": 58,
+      "url": "https://github.com/gunnero/AIchat/issues/58"
+    },
+    "AK-058": {
+      "number": 59,
+      "url": "https://github.com/gunnero/AIchat/issues/59"
+    }
+  },
+  "roadmap": {
+    "number": 1,
+    "url": "https://github.com/gunnero/AIchat/issues/1"
+  }
+}
