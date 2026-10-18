@@ -46,6 +46,7 @@ export async function api<T>(
   const data = await response.json();
   if (
     response.status === 401 &&
+    !path.startsWith("/auth/recovery/") &&
     path !== "/auth/login" &&
     !(path === "/auth/reauth" && data.code === "invalid_otp")
   )

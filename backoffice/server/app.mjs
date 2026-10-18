@@ -23,6 +23,7 @@ import { translate } from "./messages.mjs";
 import { installCustomer } from "./customer.mjs";
 import { installAccountArea } from "./account-area.mjs";
 import { installUsage } from "./usage.mjs";
+import { installRecovery, revokeRecovery } from "./recovery.mjs";
 import { checkOpenAI } from "./provider.mjs";
 import { limiterIdentity } from "./client-address.mjs";
 import { promptImport, MAX_IMPORT_BYTES } from "./prompt-bundle.mjs";
@@ -128,7 +129,7 @@ export async function buildServer({
     logger: false,
     rewriteUrl: (r) =>
       r.url.replace(
-        /^\/api\/(auth\/(?:login|session|logout|password|reauth))(?=\?|$)/,
+        /^\/api\/(auth\/(?:login|session|logout|password|reauth|codes|recovery\/(?:request|begin|password|authenticator|complete)))(?=\?|$)/,
         "/backoffice/api/$1",
       ),
     bodyLimit: 96 * 1024,
@@ -196,9 +197,9 @@ export async function buildServer({
       (
         await db
           .prepare(
-            "UPDATE admins SET last_step=? WHERE id=? AND last_step<? AND password_hash=? AND status='active'",
+            "UPDATE admins SET last_step=? WHERE id=? AND last_step<? AND password_hash=? AND mfa_secret=? AND status='active'",
           )
-          .run(step, admin.id, step, admin.password_hash)
+          .run(step, admin.id, step, admin.password_hash, admin.mfa_secret)
       ).changes === 1
     );
   };
@@ -271,7 +272,8 @@ export async function buildServer({
         P + "/auth/login",
         P + "/register/begin",
         P + "/register/complete",
-      ].includes(path)
+      ].includes(path) ||
+      path.startsWith(P + "/auth/recovery/")
     )
       return;
     const sid = r.cookies[SID];
@@ -303,6 +305,7 @@ export async function buildServer({
       "/auth/logout",
       "/auth/password",
       "/auth/reauth",
+      "/auth/codes",
     ];
     if (
       session.role !== "admin" &&
@@ -500,6 +503,7 @@ export async function buildServer({
         400,
         "Koden blev ikke godkendt. Kontrollér din authenticator og telefonens klokkeslæt.",
       );
+    let recoveryCodes;
     const id = randomUUID(),
       hash = await hashPassword(input.password);
     await transaction(db, async () => {
@@ -528,12 +532,14 @@ export async function buildServer({
         );
       await db.prepare("DELETE FROM setup_sessions").run();
       await audit(id, "admin.enrolled", id);
+      recoveryCodes = await recovery.replaceCodes(id);
     });
     reply.clearCookie(SETUP, { path: P + "/setup" });
     return {
       message:
         "Administratoren er oprettet. Log ind med en ny authenticator-kode.",
       loginUrl: origin + "/backoffice/",
+      codes: recoveryCodes,
     };
   });
   app.post(
@@ -569,7 +575,7 @@ export async function buildServer({
       ) {
         await db
           .prepare(
-            "INSERT INTO login_failures VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET failures=CASE WHEN reset_at<=? THEN 1 ELSE failures+1 END,reset_at=CASE WHEN reset_at<=? THEN excluded.reset_at ELSE reset_at END",
+            "INSERT INTO login_failures VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET failures=CASE WHEN login_failures.reset_at<=? THEN 1 ELSE login_failures.failures+1 END,reset_at=CASE WHEN login_failures.reset_at<=? THEN excluded.reset_at ELSE login_failures.reset_at END",
           )
           .run(bucket, clock() + 10 * 60 * 1000, clock(), clock());
         fail(
@@ -581,7 +587,11 @@ export async function buildServer({
       let signedIn;
       await transaction(db, async () => {
         const current = await activeAccount(admin.id);
-        if (!current || current.password_hash !== admin.password_hash)
+        if (
+          !current ||
+          current.password_hash !== admin.password_hash ||
+          current.mfa_secret !== admin.mfa_secret
+        )
           fail(
             401,
             "Login blev ikke godkendt. Kontrollér e-mail, adgangskode og en ny authenticator-kode.",
@@ -667,8 +677,15 @@ export async function buildServer({
         fail(400, "Adgangskoden eller authenticator-koden blev ikke godkendt.");
       const hash = await hashPassword(v.newPassword);
       await transaction(db, async () => {
-        if (r.session) await stillAuthorized(r);
         await stillAuthorized(r);
+        const current = await db
+          .prepare("SELECT * FROM admins WHERE id=?")
+          .get(r.adminId);
+        if (
+          current.password_hash !== admin.password_hash ||
+          current.mfa_secret !== admin.mfa_secret
+        )
+          fail(401, "Log ind for at fortsætte.");
         await db
           .prepare("UPDATE admins SET password_hash=? WHERE id=?")
           .run(hash, r.adminId);
@@ -676,6 +693,7 @@ export async function buildServer({
           .prepare("DELETE FROM sessions WHERE admin_id=?")
           .run(r.adminId);
         await audit(r.adminId, "admin.password_changed", r.adminId);
+        await revokeRecovery(db, r.adminId);
       });
       reply.clearCookie(SID, cookieOptions);
       reply.clearCookie("bo_session", {
@@ -686,6 +704,18 @@ export async function buildServer({
       return { ok: true };
     },
   );
+  const recovery = installRecovery(app, {
+    vaultKey,
+    origin,
+    clock,
+    fail,
+    audit,
+    mailer,
+    consumeOtp,
+    stillAuthorized,
+    cookieOptions,
+    SID,
+  });
   const accounts = installAccounts(app, {
     vaultKey,
     origin,
@@ -697,6 +727,7 @@ export async function buildServer({
     stillAuthorized,
     cookieOptions,
     mailer,
+    recovery,
   });
   installAccountArea(app, { fail, fresh, stillAuthorized, stamp, audit });
   installUsage(app, {

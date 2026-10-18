@@ -9,6 +9,7 @@ import { PlatformPromptForm } from "./PlatformPromptForm";
 import { AuthenticatorSetup } from "./AuthenticatorSetup";
 import { Dialog } from "./Dialog";
 import { AccountPanel } from "./AccountPanel";
+import { CodeSheet } from "./RecoveryCodes";
 import type { ReportingConnection } from "./UsagePage";
 import {
   projectColorLabel,
@@ -1376,6 +1377,7 @@ export function AdminApp() {
   );
 }
 function Setup() {
+  const [codes, setCodes] = useState<string[] | null>(null);
   const [setup, setSetup] = useState<{
       secret: string;
       uri: string;
@@ -1413,7 +1415,9 @@ function Setup() {
             {t(error)}
           </p>
         )}
-        {done ? (
+        {codes ? (
+          <CodeSheet codes={codes} done={() => setCodes(null)} />
+        ) : done ? (
           <>
             <p role="status" className="notice">
               {t(done)}
@@ -1439,8 +1443,10 @@ function Setup() {
                     const result = await api<{
                       message: string;
                       messageKey: string;
+                      codes?: string[];
                     }>("/setup", "POST", Object.fromEntries(f), setup.csrf);
                     setSetup(null);
+                    setCodes(result.codes || null);
                     setDone(result.messageKey || result.message);
                   } catch (e) {
                     setError((e as Error).message);

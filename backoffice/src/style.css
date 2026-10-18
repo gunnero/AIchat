@@ -1137,3 +1137,42 @@ input[readonly] {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Recovery factors stay in the current document only; long codes must wrap on phones. */
+.recovery-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.recovery-card form,
+.recovery-sheet {
+  display: grid;
+  gap: 1rem;
+}
+.recovery-card .text-button,
+.recovery-card > .button {
+  margin-top: 0;
+}
+.recovery-code-list {
+  padding-left: 1.5rem;
+  display: grid;
+  gap: 0.65rem;
+}
+.recovery-code-list code {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  user-select: all;
+}
+.recovery-saved {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+.recovery-saved input {
+  width: 1.25rem;
+  min-width: 1.25rem;
+  margin-top: 0.2rem;
+}
+.recovery-sheet h2 {
+  font-size: 1.4rem;
+}

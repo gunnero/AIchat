@@ -4,6 +4,7 @@ import { api, type Session } from "./client";
 import { t, LanguagePicker } from "./i18n";
 import { Brand } from "./Brand";
 import { Save } from "./FormActions";
+import { Deferred, Recovery } from "./Deferred";
 export function Login({
   onLogin,
   error: initial,
@@ -14,6 +15,13 @@ export function Login({
   const backoffice = location.pathname.startsWith("/backoffice");
   const [error, setError] = useState(initial),
     [busy, setBusy] = useState(false);
+  const [recover, setRecover] = useState(false);
+  if (recover)
+    return (
+      <Deferred>
+        <Recovery onClose={() => setRecover(false)} />
+      </Deferred>
+    );
   return (
     <div className={backoffice ? "auth-page bo-auth" : "auth-page"}>
       <div className="auth-brand">
@@ -97,6 +105,9 @@ export function Login({
           )}
           <Save busy={busy} label={t("Log ind")} />
         </form>
+        <button className="text-button" onClick={() => setRecover(true)}>
+          {t("Glemt adgangskode eller mistet authenticator?")}
+        </button>
         <p className="footnote">
           {t(
             "Adgang kræver en invitation, en personlig adgangskode og en authenticator-kode.",

@@ -2,6 +2,7 @@ import { Component, Suspense, lazy, type ReactNode } from "react";
 import { t, useLanguage } from "./i18n";
 
 export const Registration = lazy(() => import("./Registration"));
+export const Recovery = lazy(() => import("./Recovery"));
 class LoadBoundary extends Component<
   { children: ReactNode },
   { failed: boolean }

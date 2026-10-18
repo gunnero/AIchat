@@ -44,6 +44,7 @@ export function installAccounts(
     stillAuthorized,
     cookieOptions,
     mailer,
+    recovery,
   },
 ) {
   const db = app.db;
@@ -246,6 +247,7 @@ export function installAccounts(
       if (step === null)
         fail(400, "Brug en gyldig kode fra din authenticator.");
       const hash = await hashPassword(v.password);
+      let codes;
       await transaction(db, async () => {
         if (r.session) await stillAuthorized(r);
         const live = await db
@@ -292,9 +294,10 @@ export function installAccounts(
             )
             .run(stamp(), a.customer_id);
         await audit(a.id, "account.activated", a.id);
+        codes = await recovery.replaceCodes(a.id);
       });
       reply.clearCookie(REG, { path: P + "/register" });
-      return { ok: true };
+      return { ok: true, codes };
     },
   );
   app.get(

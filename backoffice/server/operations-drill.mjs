@@ -8,6 +8,7 @@ import { execFile } from "node:child_process";
 import { openPostgres } from "./postgres.mjs";
 import { migrate } from "./migrate.mjs";
 import { backupPostgres, restorePostgres } from "./postgres-backup.mjs";
+import { replaceRecoveryCodes } from "./recovery.mjs";
 import {
   seal,
   unseal,
@@ -73,6 +74,20 @@ try {
     await db.query(
       "INSERT INTO sessions VALUES('synthetic-session',$1,$2,$2,$3,$2)",
       [admin, now, now + 60000],
+    );
+    await replaceRecoveryCodes(db, admin, now);
+    const request = randomUUID();
+    await db.query(
+      "INSERT INTO recovery_requests VALUES($1,$2,'synthetic-link','synthetic-tag','sent',$3,$4)",
+      [request, admin, now, now + 60000],
+    );
+    await db.query(
+      "INSERT INTO recovery_sessions(hash,request_id,expires) VALUES('synthetic-recovery',$1,$2)",
+      [request, now + 60000],
+    );
+    await db.query(
+      "INSERT INTO recovery_support VALUES($1,$2,'synthetic-support',$3,$4)",
+      [randomUUID(), admin, now + 60000, randomUUID()],
     );
     await db.query(
       "INSERT INTO customers VALUES($1,'Synthetic customer','customer@example.test','active',null,100,$2,$2)",
@@ -268,6 +283,17 @@ try {
       (await db.query("SELECT count(*) AS n FROM sessions")).rows[0].n,
       0,
     );
+    for (const table of [
+      "recovery_codes",
+      "recovery_requests",
+      "recovery_sessions",
+      "recovery_support",
+    ])
+      assert.equal(
+        (await db.query(`SELECT count(*) AS n FROM ${table}`)).rows[0].n,
+        0,
+        "Restores must not resurrect recovery factors",
+      );
   });
   console.log(
     JSON.stringify({

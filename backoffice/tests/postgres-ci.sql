@@ -8,3 +8,6 @@ CREATE DATABASE ai_customer OWNER ai_owner;
 CREATE DATABASE ai_restore OWNER ai_owner;
 CREATE DATABASE ai_ops_probe OWNER ai_owner;
 CREATE DATABASE ai_ops_restore OWNER ai_owner;
+
+CREATE DATABASE ai_recovery OWNER ai_owner;
+CREATE DATABASE ai_recovery_restore OWNER ai_owner;

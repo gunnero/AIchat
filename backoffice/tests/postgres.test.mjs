@@ -495,7 +495,7 @@ pgtest(
 );
 
 pgtest(
-  "PostgreSQL: schema-7 backup restores and upgrades to 8 without changing enrolled identities, project colours or encrypted history",
+  "PostgreSQL: schema-7 backup restores and upgrades to 9 without changing enrolled identities, project colours or encrypted history",
   async () => {
     const { a, p } = fixtures,
       c = await create(a, p);
@@ -510,7 +510,7 @@ pgtest(
       );
     await maintenance(() =>
       q(
-        "ALTER TABLE project_appearance DROP CONSTRAINT project_appearance_color_check; ALTER TABLE project_appearance ADD CONSTRAINT project_appearance_color_check CHECK(color IN ('black','yellow','purple','green')); DELETE FROM schema_version WHERE version=8",
+        "ALTER TABLE project_appearance DROP CONSTRAINT project_appearance_color_check; ALTER TABLE project_appearance ADD CONSTRAINT project_appearance_color_check CHECK(color IN ('black','yellow','purple','green')); DELETE FROM schema_version WHERE version>=8",
       ),
     );
     const { backupPostgres, restorePostgres } =
@@ -548,7 +548,7 @@ pgtest(
         ).schema,
         7,
       );
-      assert.deepEqual(await migrate(restore), { schema: 8, imported: false });
+      assert.deepEqual(await migrate(restore), { schema: 9, imported: false });
       assert.deepEqual(
         (await restore.query("SELECT * FROM admins ORDER BY id")).rows,
         identities,
@@ -570,8 +570,8 @@ pgtest(
           messages,
         );
       });
-      assert.deepEqual(await migrate(owner), { schema: 8, imported: false });
-      assert.deepEqual(await migrate(owner), { schema: 8, imported: false });
+      assert.deepEqual(await migrate(owner), { schema: 9, imported: false });
+      assert.deepEqual(await migrate(owner), { schema: 9, imported: false });
       assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), identities);
       assert.deepEqual(
         await q("SELECT * FROM sessions ORDER BY hash"),
@@ -783,7 +783,7 @@ pgtest(
         ).schema,
         5,
       );
-      assert.deepEqual(await migrate(restore), { schema: 8, imported: false });
+      assert.deepEqual(await migrate(restore), { schema: 9, imported: false });
       assert.deepEqual(
         (await restore.query("SELECT * FROM admins ORDER BY id")).rows,
         identities,
@@ -796,8 +796,8 @@ pgtest(
           encrypted,
         );
       });
-      assert.deepEqual(await migrate(owner), { schema: 8, imported: false });
-      assert.deepEqual(await migrate(owner), { schema: 8, imported: false });
+      assert.deepEqual(await migrate(owner), { schema: 9, imported: false });
+      assert.deepEqual(await migrate(owner), { schema: 9, imported: false });
       assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), identities);
       assert.deepEqual(
         await q("SELECT * FROM sessions ORDER BY hash"),
@@ -1378,7 +1378,7 @@ pgtest(
         journal,
       });
       assert.equal(result.deletionJournalApplied, true);
-      assert.equal(result.schema, 8);
+      assert.equal(result.schema, 9);
       assert.equal(
         (
           await restore.query(
@@ -1799,7 +1799,7 @@ pgtest(
 );
 
 pgtest(
-  "PostgreSQL: additive schema 3 to 8 migration preserves MFA, owner protection, sessions, vault ciphertext and private history",
+  "PostgreSQL: additive schema 3 to 9 migration preserves MFA, owner protection, sessions, vault ciphertext and private history",
   async () => {
     const { a, p, main } = fixtures,
       c = await create(a, p);
@@ -1854,7 +1854,7 @@ pgtest(
         journal,
       });
       assert.equal(result.schema, 3);
-      assert.deepEqual(await migrate(restore), { schema: 8, imported: false });
+      assert.deepEqual(await migrate(restore), { schema: 9, imported: false });
       assert.deepEqual(
         (await restore.query("SELECT * FROM admins ORDER BY id")).rows,
         before,
@@ -1875,8 +1875,8 @@ pgtest(
       await restore.close();
       await rm(dir, { recursive: true, force: true });
     }
-    assert.deepEqual(await migrate(owner), { schema: 8, imported: false });
-    assert.deepEqual(await migrate(owner), { schema: 8, imported: false });
+    assert.deepEqual(await migrate(owner), { schema: 9, imported: false });
+    assert.deepEqual(await migrate(owner), { schema: 9, imported: false });
     assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), before);
     assert.deepEqual(await q("SELECT * FROM sessions ORDER BY hash"), sessions);
     assert.deepEqual(
@@ -1897,7 +1897,7 @@ pgtest(
 );
 
 pgtest(
-  "PostgreSQL: schema 4 upgrade and schema 8 restore preserve identities, profiles, project colours and private Admin history",
+  "PostgreSQL: schema 4 upgrade and schema 9 restore preserve identities, profiles, project colours and private Admin history",
   async () => {
     const { main, p } = fixtures;
     const before = await q("SELECT * FROM admins ORDER BY id");
@@ -1920,7 +1920,7 @@ pgtest(
         legacyFunction.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"),
       );
     });
-    assert.deepEqual(await migrate(owner), { schema: 8, imported: false });
+    assert.deepEqual(await migrate(owner), { schema: 9, imported: false });
     assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), before);
     assert.deepEqual(await q("SELECT * FROM sessions ORDER BY hash"), sessions);
     assert.equal(
@@ -1973,7 +1973,7 @@ pgtest(
             destination: join(dir, "backup"),
           })
         ).schema,
-        8,
+        9,
       );
       await restore.transaction(async () => {
         await restore.query("SET LOCAL ROLE ai_owner");
@@ -1989,7 +1989,7 @@ pgtest(
             journal,
           })
         ).schema,
-        8,
+        9,
       );
       await restore.transaction(async () => {
         await restore.query("SET LOCAL ROLE ai_owner");

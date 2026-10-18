@@ -7,6 +7,7 @@ import { accountUpgrade } from "./account-schema.mjs";
 import { appearanceUpgrade } from "./appearance-schema.mjs";
 import { reportingUpgrade } from "./reporting-schema.mjs";
 import { customColorUpgrade } from "./custom-color-schema.mjs";
+import { recoveryUpgrade } from "./recovery-schema.mjs";
 
 const tables = [
   "customers",
@@ -24,6 +25,7 @@ const tables = [
   "owner_identity",
   "invitations",
   "login_failures",
+  "recovery_codes",
 ];
 export async function migrate(db, sqlitePath) {
   let source;
@@ -56,13 +58,14 @@ export async function migrate(db, sqlitePath) {
           await db.query("SELECT max(version) AS v FROM schema_version")
         ).rows[0].v;
         if (version === 3) await db.query(postgresUpgrade);
-        else if (![4, 5, 6, 7, 8].includes(version))
+        else if (![4, 5, 6, 7, 8, 9].includes(version))
           throw new Error("Unsupported schema");
         if (version < 5) await db.query(accountUpgrade);
         if (version < 6) await db.query(appearanceUpgrade);
         if (version < 7) await db.query(reportingUpgrade);
         if (version < 8) await db.query(customColorUpgrade);
-        return { schema: 8, imported: false };
+        if (version < 9) await db.query(recoveryUpgrade);
+        return { schema: 9, imported: false };
       }
       await db.query(
         await readFile(new URL("./schema.sql", import.meta.url), "utf8"),
@@ -72,6 +75,7 @@ export async function migrate(db, sqlitePath) {
       await db.query(appearanceUpgrade);
       await db.query(reportingUpgrade);
       await db.query(customColorUpgrade);
+      await db.query(recoveryUpgrade);
       let records = 0;
       if (source)
         for (const table of tables) {
@@ -82,6 +86,7 @@ export async function migrate(db, sqlitePath) {
               "admin_workspaces",
               "project_appearance",
               "usage_reporting",
+              "recovery_codes",
             ].includes(table) &&
             !source
               .prepare(
@@ -118,7 +123,7 @@ export async function migrate(db, sqlitePath) {
         }
       // Session and in-progress setup/registration cookies are intentionally
       // invalidated once; enrolled credentials and pending invitations survive.
-      return { schema: 8, imported: !!source, records };
+      return { schema: 9, imported: !!source, records };
     });
   } finally {
     source?.close();
