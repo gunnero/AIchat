@@ -7,7 +7,13 @@ import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildServer } from "../server/app.mjs";
-import { otp, unseal, seal, digest } from "../server/security.mjs";
+import {
+  otp,
+  unseal,
+  seal,
+  digest,
+  verifyPassword,
+} from "../server/security.mjs";
 import { checkOpenAI } from "../server/provider.mjs";
 
 const origin = "https://admin.example.test",
@@ -20,6 +26,7 @@ async function fixture(
     providerCheck = async () => "ok",
     dbPath = ":memory:",
     vaultKey = randomBytes(32),
+    passwordCheck,
   } = {},
 ) {
   let now = Date.UTC(2026, 9, 18, 12, 0, 0);
@@ -30,6 +37,7 @@ async function fixture(
     localOrigin,
     clock: () => now,
     providerCheck,
+    passwordCheck,
     bootstrapHash: digest("synthetic-owner-enrollment-token"),
   });
   t.after(() => app.close());
@@ -665,5 +673,52 @@ test("provider probe uses only fixed HTTPS endpoint, refuses redirects, and supp
       throw new Error("must never be echoed");
     }),
     "error",
+  );
+});
+
+test("a pending login cannot accept an old password after a concurrent password change", async (t) => {
+  let hold = false,
+    release,
+    started;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const began = new Promise((resolve) => {
+    started = resolve;
+  });
+  const f = await fixture(t, {
+    passwordCheck: async (value, hash) => {
+      const valid = await verifyPassword(value, hash);
+      if (hold) {
+        started();
+        await gate;
+      }
+      return valid;
+    },
+  });
+  await f.owner();
+  f.advance(30000);
+  hold = true;
+  const pending = f.req("/auth/login", "POST", {
+    email: "admin@example.test",
+    password: fixturePassword,
+    code: otp(f.secret).generate({ timestamp: f.now + 30000 }),
+  });
+  await began;
+  assert.equal(
+    (
+      await f.req("/auth/password", "POST", {
+        currentPassword: fixturePassword,
+        newPassword: "A concurrently changed test password!",
+        code: otp(f.secret).generate({ timestamp: f.now }),
+      })
+    ).statusCode,
+    200,
+  );
+  release();
+  assert.equal((await pending).statusCode, 401);
+  assert.equal(
+    f.app.db.prepare("SELECT count(*) AS n FROM sessions").get().n,
+    0,
   );
 });

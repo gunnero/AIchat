@@ -84,6 +84,7 @@ export async function buildServer({
   clock = Date.now,
   providerCheck = checkOpenAI,
   bootstrapHash,
+  passwordCheck = verifyPassword,
 }) {
   if (!Buffer.isBuffer(vaultKey) || vaultKey.length !== 32)
     throw new Error("A 32-byte vault key is required");
@@ -144,8 +145,10 @@ export async function buildServer({
     if (step === null || step <= admin.last_step) return false;
     return (
       db
-        .prepare("UPDATE admins SET last_step=? WHERE id=? AND last_step<?")
-        .run(step, admin.id, step).changes === 1
+        .prepare(
+          "UPDATE admins SET last_step=? WHERE id=? AND last_step<? AND password_hash=?",
+        )
+        .run(step, admin.id, step, admin.password_hash).changes === 1
     );
   };
   const stillAuthorized = (r) => {
@@ -337,7 +340,7 @@ export async function buildServer({
       const admin = db
         .prepare("SELECT * FROM admins WHERE email=?")
         .get(input.email);
-      const valid = await verifyPassword(
+      const valid = await passwordCheck(
         input.password,
         admin?.password_hash || dummyPassword,
       );
