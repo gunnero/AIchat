@@ -17,6 +17,8 @@ import {
   ArrowUpIcon,
   ChatCircleIcon,
   ArrowClockwiseIcon,
+  ShieldCheckIcon,
+  ArrowRightIcon,
 } from "@phosphor-icons/react";
 import { api, type Session } from "./client";
 import { t, useLanguage, LanguagePicker, getLanguage } from "./i18n";
@@ -549,7 +551,9 @@ export function CustomerWorkspace({
       </div>
       {session.role === "Admin" && (
         <a className="cw-admin-link" href="/backoffice/">
+          <ShieldCheckIcon size={20} />
           {t("Åbn administration")}
+          <ArrowRightIcon size={18} />
         </a>
       )}
     </>

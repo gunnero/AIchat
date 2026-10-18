@@ -40,6 +40,7 @@ import {
   LockKeyIcon,
   ArrowClockwiseIcon,
   ChartBarIcon,
+  ChatCircleIcon,
 } from "@phosphor-icons/react";
 
 type Invitation = { id: string; status: string; expires: number } | null;
@@ -163,23 +164,22 @@ const date = (s: string | null) =>
         ...(s.includes("T") ? { timeStyle: "short" } : {}),
       }).format(new Date(s))
     : "—";
-function Brand() {
+function Brand({ administration = false }: { administration?: boolean }) {
   return (
     <div className="brand">
-      <span className="brand-mark">AI</span>
       <div>
-        <strong>Kundetypeassistent</strong>
+        <strong>
+          {administration ? t("Administration") : "Kundetypeassistent"}
+        </strong>
         <span>
-          {location.pathname.startsWith("/backoffice")
-            ? "Administration"
-            : t("Dit private arbejdsrum")}
+          {administration ? "Kundetypeassistent" : t("Dit private arbejdsrum")}
         </span>
       </div>
     </div>
   );
 }
 export function App() {
-  useLanguage();
+  const language = useLanguage();
   const [inviteToken] = useState(() =>
     new URLSearchParams(location.hash.slice(1)).get("invite"),
   );
@@ -218,6 +218,9 @@ export function App() {
     value?: Customer | Project | Connection | Prompt | Account | ReportingSetup;
   } | null>(null);
   const backoffice = location.pathname.startsWith("/backoffice");
+  useEffect(() => {
+    document.title = `${t(backoffice ? "Administration" : "Dit private arbejdsrum")} · Kundetypeassistent`;
+  }, [backoffice, language]);
   const setup =
     backoffice && new URLSearchParams(location.search).get("setup") === "1";
   function cancelVerification() {
@@ -248,7 +251,6 @@ export function App() {
     [],
   );
   useEffect(() => {
-    document.title = "AI · Kundetypeassistent";
     const restore = (e: PageTransitionEvent) => {
       if (e.persisted) location.reload();
     };
@@ -435,8 +437,10 @@ export function App() {
   if (setup) return <Setup />;
   if (loading)
     return (
-      <div className="auth-page">
-        <p role="status">{t("Åbner administrationen…")}</p>
+      <div className={backoffice ? "auth-page bo-auth" : "auth-page"}>
+        <p role="status">
+          {t(backoffice ? "Åbner administrationen…" : "Åbner dit arbejdsrum…")}
+        </p>
       </div>
     );
   if (!session) return <Login onLogin={setSession} error={t(error)} />;
@@ -471,11 +475,11 @@ export function App() {
     setNotice("");
   };
   return (
-    <div className="shell">
+    <div className="shell bo-shell">
       <aside>
-        <Brand />
+        <Brand administration />
         <LanguagePicker />
-        <p className="nav-label">{t("DIT ARBEJDSRUM")}</p>
+        <p className="nav-label">{t("Administrationsmenu")}</p>
         <nav aria-label="Administration">
           {tabs().map((t) => (
             <button
@@ -501,9 +505,6 @@ export function App() {
               <small>Admin · 2FA</small>
             </div>
           </button>
-          <a className="workspace-link" href="/">
-            {t("Åbn mit arbejdsrum")}
-          </a>
           <button onClick={() => setModal({ type: "password" })}>
             {t("Skift adgangskode")}{" "}
           </button>
@@ -527,11 +528,19 @@ export function App() {
         </div>
       </aside>
       <div className="main">
-        <header>
+        <header className="bo-header">
           <div>
-            <p className="eyebrow">AI · KUNDETYPEASSISTENT</p>
+            <p className="eyebrow bo-area">
+              <ShieldCheckIcon size={18} />
+              {t("Administration")}
+            </p>
             <h1>{selected.label}</h1>
           </div>
+          <a className="button bo-workspace-link" href="/">
+            <ChatCircleIcon size={21} />
+            {t("Åbn mit arbejdsrum")}
+            <ArrowRightIcon size={18} />
+          </a>
         </header>
         <main>
           {tab !== "usage" && (
@@ -539,7 +548,7 @@ export function App() {
               <span className="eyebrow">{t("ET ROLIGT OVERBLIK")}</span>
               <h2>
                 {tab === "overview"
-                  ? t("Plads til det, der er vigtigt.")
+                  ? t("Administrér dine assistenter")
                   : tab === "customers"
                     ? t("Menneskene bag samtalerne")
                     : tab === "projects"
@@ -1353,22 +1362,37 @@ function Login({
   onLogin: (s: Session) => void;
   error: string;
 }) {
+  const backoffice = location.pathname.startsWith("/backoffice");
   const [error, setError] = useState(initial),
     [busy, setBusy] = useState(false);
   return (
-    <div className="auth-page">
+    <div className={backoffice ? "auth-page bo-auth" : "auth-page"}>
       <div className="auth-brand">
-        <Brand />
+        <Brand administration={backoffice} />
         <LanguagePicker />
       </div>
       <section className="auth-card">
         <span className="icon-circle">
-          <LockKeyIcon size={30} />
+          {backoffice ? (
+            <ShieldCheckIcon size={30} />
+          ) : (
+            <LockKeyIcon size={30} />
+          )}
         </span>
         <p className="eyebrow">{t("VELKOMMEN TILBAGE")}</p>
-        <h1>{t("Dit overblik begynder her.")}</h1>
+        <h1>
+          {t(
+            backoffice
+              ? "Log ind i administrationen"
+              : "Log ind i dit arbejdsrum",
+          )}
+        </h1>
         <p className="muted">
-          {t("Log ind med din personlige konto og authenticator.")}{" "}
+          {t(
+            backoffice
+              ? "Administrér kunder, projekter og adgang."
+              : "Dine assistenter og private samtaler venter her.",
+          )}{" "}
         </p>
         <form
           onSubmit={async (e) => {

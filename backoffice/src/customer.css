@@ -180,10 +180,24 @@
   text-decoration: underline;
 }
 .cw-admin-link {
-  display: block;
-  padding: 14px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--cw-border);
+  border-radius: 9px;
   color: var(--cw-fg);
   font-weight: 600;
+  text-decoration: none;
+}
+.cw-admin-link:hover {
+  background: var(--cw-hover);
+}
+.cw-admin-link svg {
+  flex-shrink: 0;
+}
+.cw-admin-link svg:last-child {
+  margin-left: auto;
 }
 .cw-person strong {
   display: block;

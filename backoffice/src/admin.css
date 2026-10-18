@@ -1,0 +1,166 @@
+.bo-shell {
+  background: #f1f2f4;
+}
+.bo-shell > aside {
+  background: #191a1c;
+  color: #fff;
+  border-right-color: #393a3e;
+  overflow-y: auto;
+  scrollbar-color: #777a81 #191a1c;
+}
+.bo-shell .brand strong {
+  font-size: 27px;
+  letter-spacing: -0.5px;
+}
+.bo-shell .brand span,
+.bo-shell aside .language-picker,
+.bo-shell aside .nav-label,
+.bo-shell .admin-person small {
+  color: #bfc1c6;
+}
+.bo-shell aside .language-picker select {
+  background: #28292c;
+  border-color: #64666c;
+  color: #fff;
+}
+.bo-shell aside .nav-label {
+  margin-top: 30px;
+}
+.bo-shell nav button.selected {
+  background: #fff;
+  color: #171717;
+  font-weight: 600;
+}
+.bo-shell nav button:not(.selected):hover,
+.bo-shell .side-footer > button:hover {
+  background: #303135;
+}
+.bo-shell .side-footer > button {
+  color: #e5e6e8;
+}
+.bo-shell .admin-person {
+  border-top-color: #494b50;
+}
+.bo-shell .admin-person > span {
+  border-color: #777a81;
+}
+.bo-shell aside :focus-visible {
+  outline-color: #fff;
+}
+.bo-header {
+  background: #191a1c;
+  color: #fff;
+  border-bottom-color: #393a3e;
+  min-height: 112px;
+}
+.bo-area.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #c9cbd0;
+  font-size: 12px;
+  letter-spacing: 1.2px;
+}
+.bo-workspace-link {
+  background: #fff;
+  color: #171717;
+  border-color: #fff;
+  font-size: 15px;
+}
+.bo-workspace-link:hover {
+  background: #e5e6e8;
+}
+.bo-header :focus-visible {
+  outline-color: #fff;
+}
+.bo-shell
+  :is(.metric, .welcome-card, .table-scroll, .project-card, .usage-section) {
+  background: #fff;
+}
+.bo-shell .metric:hover {
+  background: #fafafa;
+  border-color: #8c8e94;
+}
+.bo-shell .intro > .eyebrow {
+  display: none;
+}
+.bo-shell .intro h2 {
+  font-size: 30px;
+}
+.bo-shell > .main > footer {
+  background: #f1f2f4;
+}
+.bo-auth {
+  background: #191a1c;
+  color: #fff;
+}
+.bo-auth .auth-brand {
+  max-width: 620px;
+}
+.bo-auth .brand strong {
+  font-size: 28px;
+}
+.bo-auth .brand span,
+.bo-auth > .auth-footer,
+.bo-auth .auth-brand .language-picker {
+  color: #c9cbd0;
+}
+.bo-auth .auth-brand select {
+  background: #28292c;
+  border-color: #777a81;
+  color: #fff;
+}
+.bo-auth .auth-card {
+  color: #171717;
+  border-radius: 10px;
+}
+.bo-auth .auth-brand :focus-visible {
+  outline-color: #fff;
+}
+@media (max-width: 1100px) {
+  .bo-shell .brand strong {
+    font-size: 24px;
+  }
+}
+@media (max-width: 760px) {
+  .bo-shell > aside {
+    gap: 14px;
+    border-bottom-color: #494b50;
+  }
+  .bo-shell aside .language-picker {
+    margin: 0;
+    justify-content: space-between;
+  }
+  .bo-shell .side-footer {
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px 16px;
+  }
+  .bo-shell .side-footer > .account-trigger {
+    display: flex;
+    padding: 8px 4px;
+    margin: 0;
+    border: 0;
+  }
+  .bo-shell .side-footer > .account-trigger > span {
+    display: none;
+  }
+  .bo-shell .side-footer > .account-trigger small {
+    font-size: 12px;
+  }
+  .bo-header {
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  .bo-workspace-link {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .bo-workspace-link svg:last-child {
+    margin-left: auto;
+  }
+  .bo-shell .intro h2 {
+    font-size: 27px;
+  }
+}

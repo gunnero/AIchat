@@ -1,5 +1,15 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  Administration: "Administration",
+  Administrationsmenu: "Administration menu",
+  "Åbner dit arbejdsrum…": "Opening your workspace…",
+  "Log ind i administrationen": "Sign in to administration",
+  "Log ind i dit arbejdsrum": "Sign in to your workspace",
+  "Administrér dine assistenter": "Manage your assistants",
+  "Administrér kunder, projekter og adgang.":
+    "Manage customers, projects and access.",
+  "Dine assistenter og private samtaler venter her.":
+    "Your assistants and private conversations are here.",
   Projekt: "Project",
   Bruger: "User",
   "Forbrug og udgifter": "Usage & costs",
@@ -322,7 +332,7 @@ export const english = {
     "Account saved, but the email could not be sent. Please resend the invitation.",
   "Invitationen er afleveret til mailserveren. Levering er endnu ikke bekræftet.":
     "Invitation accepted by the mail server. Delivery has not yet been confirmed.",
-  "Åbner administrationen…": "Opening your workspace…",
+  "Åbner administrationen…": "Opening administration…",
   "DIT ARBEJDSRUM": "YOUR WORKSPACE",
   "Skift adgangskode": "Change password",
   "Log ud": "Sign out",
