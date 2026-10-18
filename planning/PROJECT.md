@@ -10,7 +10,7 @@ Planning baseline, 16 October 2026. Canonical task status lives in the [GitHub r
 - Private chat histories belong to the customer. Normal administrators cannot read unshared chats or impersonate customers.
 - Customers may explicitly share a fixed snapshot with Helle and revoke future access. Future messages remain private.
 - Packages expose a simple customer allowance. Internal usage accounting records tokens and estimated provider costs separately.
-- The chosen visual target is option 1: dark green sidebar, cream workspace and sage accents. Danish customer UI; English engineering tasks.
+- The client approved option 1 and requested a black-and-white palette on 18 October 2026; retain the layout and use neutral gray accents. Danish customer UI; English engineering tasks.
 - Approved instructions and knowledge define assistant behaviour. Customer conversations are not automatically used as shared knowledge or training material.
 
 ## First reviewable build

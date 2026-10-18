@@ -9,7 +9,7 @@ The baseline is [PROJECT.md](../planning/PROJECT.md). Unresolved inputs are not 
 | Payments | External; manual entitlements first. | Renewals, cancellations, refunds, AK-028/031. |
 | Privacy | Private history; only expressly shared copies visible to admin. | Roles, lawful bases, sensitive data, retention and DPIA assessment, AK-042. |
 | Sharing | Fixed selected messages, revocable future access. | Production enforcement and deletion, AK-025/027/044. |
-| Design | Option 1: dark green, cream and sage. | Higher-resolution original logo for later polish. |
+| Design | Approved option 1 layout; black-and-white palette requested on 18 October 2026. | Higher-resolution original logo for later polish. |
 | First build | In-memory deterministic demo. | Genuine speed/cost measurements need the API pilot. |
 | AI behavior | Approved instructions and retrieval; no automatic training on chats. | GPT materials, rights and evaluation examples, AK-011. |
 | AI service | Server-only future adapter. | Owner, model, region, retention eligibility, AK-010–014/047. |
