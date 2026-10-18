@@ -24,17 +24,7 @@
   scrollbar-color: var(--cw-border) var(--cw-bg);
 }
 .cw-brand {
-  display: flex;
-  gap: 13px;
-  align-items: center;
   margin: 0 5px 8px;
-}
-.cw-brand img {
-  width: 56px;
-  height: 56px;
-  object-fit: contain;
-  filter: grayscale(1);
-  border-radius: 50%;
 }
 .cw-brand strong {
   display: block;
@@ -308,13 +298,6 @@
   max-width: 640px;
   margin: auto;
   padding: 28px 0 70px;
-}
-.cw-welcome > img {
-  width: 88px;
-  height: 88px;
-  filter: grayscale(1);
-  border-radius: 50%;
-  margin-bottom: 25px;
 }
 .cw-welcome > svg {
   margin-bottom: 25px;
@@ -708,10 +691,6 @@
   }
   .cw-welcome > p:not(.cw-label) {
     font-size: 18px;
-  }
-  .cw-welcome > img {
-    width: 72px;
-    height: 72px;
   }
   .cw-alert {
     padding: 10px 16px;

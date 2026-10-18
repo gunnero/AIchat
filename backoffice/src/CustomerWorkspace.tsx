@@ -437,7 +437,6 @@ export function CustomerWorkspace({
   const sidebar = (
     <>
       <div className="cw-brand">
-        <img src="/backoffice/brand-mark.png" alt="" />
         <div>
           <strong>Kundetypeassistent</strong>
           <span>{t("Dit private arbejdsrum")}</span>
@@ -673,7 +672,6 @@ export function CustomerWorkspace({
             </div>
           ) : !chatId ? (
             <div className="cw-welcome">
-              <img src="/backoffice/brand-mark.png" alt="" />
               <p className="cw-label">{project.name}</p>
               <h2>{t("Plads til dine tanker.")}</h2>
               <p>

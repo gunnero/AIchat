@@ -1,6 +1,6 @@
 # Customer workspace and private history
 
-This batch replaces the root synthetic demonstration with the real invitation-only customer application. `/backoffice/` remains administration; `/demo/` remains an explicitly synthetic, in-memory demonstration. The approved monochrome option 1 layout is retained, including grayscale logo, project selector, private history, mobile drawer and English/Danish controls.
+This batch replaces the root synthetic demonstration with the real invitation-only customer application. `/backoffice/` remains administration; `/demo/` remains an explicitly synthetic, in-memory demonstration. The approved option 1 layout retains the project selector, private history, mobile drawer and English/Danish controls. The workspace uses the app name without a placeholder logo in its sidebar or welcome screen, pending official branding.
 
 Customers can create, reopen, rename, search titles and permanently delete their own conversations, and save user messages. **AI replies are disabled.** There are no provider calls, simulated assistant messages, charges, attachments, sharing, packages or usage ledger in this batch. Allowances in the backoffice are still configuration only. Broader supplier/GDPR, recovery automation and customer launch requirements remain open.
 
