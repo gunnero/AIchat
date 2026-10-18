@@ -463,12 +463,33 @@ test("first owner setup is loopback-only, rejects proxy headers and is permanent
     ).statusCode,
     404,
   );
+  for (const header of [
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "forwarded",
+  ])
+    assert.equal(
+      (
+        await f.req("/setup", "GET", undefined, {
+          host: "127.0.0.1:8765",
+          origin: localOrigin,
+          "x-setup-token": "synthetic-owner-enrollment-token",
+          [header]: "127.0.0.1",
+        })
+      ).statusCode,
+      404,
+    );
   assert.equal(
     (
-      await f.req("/setup", "GET", undefined, {
-        host: "127.0.0.1:8765",
-        origin: localOrigin,
-        "x-forwarded-for": "127.0.0.1",
+      await f.app.inject({
+        url: "/backoffice/api/setup",
+        remoteAddress: "203.0.113.1",
+        headers: {
+          host: "127.0.0.1:8765",
+          origin: localOrigin,
+          "x-setup-token": "synthetic-owner-enrollment-token",
+        },
       })
     ).statusCode,
     404,
@@ -540,8 +561,14 @@ test("server-side inactivity expires sessions and blocks later writes", async (t
   assert.equal((await f.req("/customers")).statusCode, 401);
   assert.equal((await f.req("/projects", "POST", {})).statusCode, 401);
 });
-test("failed authentication limits persist across requests without exposing account existence", async (t) => {
-  const f = await fixture(t);
+test("failed authentication limits persist across requests and restart without exposing account existence", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ai-failed-auth-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const options = {
+    dbPath: join(directory, "state.sqlite"),
+    vaultKey: randomBytes(32),
+  };
+  const f = await fixture(t, options);
   await f.setup();
   let response;
   for (let i = 0; i < 5; i++) {
@@ -555,6 +582,18 @@ test("failed authentication limits persist across requests without exposing acco
   assert.equal(
     (
       await f.req("/auth/login", "POST", {
+        email: "missing@example.test",
+        password: "wrong",
+        code: "000000",
+      })
+    ).statusCode,
+    429,
+  );
+  await f.app.close();
+  const restarted = await fixture(t, options);
+  assert.equal(
+    (
+      await restarted.req("/auth/login", "POST", {
         email: "missing@example.test",
         password: "wrong",
         code: "000000",

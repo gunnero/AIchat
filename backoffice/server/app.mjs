@@ -24,6 +24,7 @@ import { installCustomer } from "./customer.mjs";
 import { installAccountArea } from "./account-area.mjs";
 import { installUsage } from "./usage.mjs";
 import { checkOpenAI } from "./provider.mjs";
+import { limiterIdentity } from "./client-address.mjs";
 import { promptImport, MAX_IMPORT_BYTES } from "./prompt-bundle.mjs";
 const P = "/backoffice/api",
   SETUP = "bo_setup";
@@ -101,6 +102,7 @@ export async function buildServer({
   vaultKey,
   origin,
   localOrigin = "http://127.0.0.1:8765",
+  apacheProxy = false,
   secureCookies = true,
   staticRoot,
   clock = Date.now,
@@ -112,6 +114,8 @@ export async function buildServer({
 }) {
   if (!Buffer.isBuffer(vaultKey) || vaultKey.length !== 32)
     throw new Error("A 32-byte vault key is required");
+  if (typeof apacheProxy !== "boolean")
+    throw new Error("Invalid Apache proxy configuration");
   const configured = new URL(origin);
   if (
     configured.origin !== origin ||
@@ -134,12 +138,12 @@ export async function buildServer({
   app.decorate("db", db);
   app.addHook("onClose", () => db.close());
   await app.register(cookie);
-  // Use the socket identity, not user-controlled proxy/IP headers. Per-account
-  // failure limits below persist across process restarts.
+  // Enable only behind the matching Apache sanitization contract. Persistent
+  // per-account failures remain independent of the visitor's network address.
   await app.register(rateLimit, {
     max: 240,
     timeWindow: "1 minute",
-    keyGenerator: (r) => r.socket.remoteAddress || "local",
+    keyGenerator: (r) => limiterIdentity(r, apacheProxy),
   });
   const dummyPassword = await hashPassword(token());
   const stamp = () => new Date(clock()).toISOString();

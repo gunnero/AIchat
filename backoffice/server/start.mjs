@@ -15,6 +15,8 @@ const key = await readFile(keyPath);
 if (key.length !== 32) throw new Error("Vault key must contain 32 bytes");
 const publicOrigin = process.env.PUBLIC_ORIGIN || "http://127.0.0.1:8765";
 const port = Number(process.env.PORT || 8765);
+if (![undefined, "0", "1"].includes(process.env.APACHE_CLIENT_IP))
+  throw new Error("Invalid APACHE_CLIENT_IP configuration");
 let bootstrapHash;
 try {
   const bootstrapPath = state + "/bootstrap.token";
@@ -72,6 +74,7 @@ const app = await buildServer({
     ? localMailer(process.env.MAIL_FROM)
     : async () => false,
   origin: publicOrigin,
+  apacheProxy: process.env.APACHE_CLIENT_IP === "1",
   localOrigin: process.env.LOCAL_SETUP_ORIGIN || `http://127.0.0.1:${port}`,
   secureCookies: publicOrigin.startsWith("https:"),
   staticRoot: resolve(dirname(new URL(import.meta.url).pathname), "../dist"),
