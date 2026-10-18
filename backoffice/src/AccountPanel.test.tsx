@@ -39,6 +39,40 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 test.each(["en", "da"] as const)(
+  "a missing or mismatched account identity leaves loading, shows no other account's details and supports retry (%s)",
+  async (language) => {
+    setLanguage(language);
+    const user = userEvent.setup();
+    for (const invalidId of [undefined, "another-account"]) {
+      mocked
+        .mockResolvedValueOnce({
+          ...account,
+          id: invalidId,
+          allowance: 999999,
+          projects: [{ id: "other", name: "Another account's assistant" }],
+        })
+        .mockResolvedValueOnce(account);
+      const view = render(
+        <AccountDialog session={session} logout={vi.fn()} close={vi.fn()} />,
+      );
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        t(
+          "Kontooplysningerne kunne ikke indlæses. Genindlæs siden og prøv igen.",
+        ),
+      );
+      expect(screen.queryByText(t("Indlæser…"))).not.toBeInTheDocument();
+      expect(
+        screen.queryByText("Another account's assistant"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("999999")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: t("Prøv igen") }));
+      expect(await screen.findByText("300")).toBeVisible();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      view.unmount();
+    }
+  },
+);
+test.each(["en", "da"] as const)(
   "both roles can edit their own display name and see honest allowance information (%s)",
   async (language) => {
     setLanguage(language);

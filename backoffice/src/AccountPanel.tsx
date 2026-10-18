@@ -64,7 +64,12 @@ export function AccountPanel({
     setLoadError("");
     api<Account>("/account")
       .then((result) => {
-        if (current && result.id === session.id) setAccount(result);
+        if (!current) return;
+        if (!result || !session.id || result.id !== session.id)
+          throw new Error(
+            "Kontooplysningerne kunne ikke indlæses. Genindlæs siden og prøv igen.",
+          );
+        setAccount(result);
       })
       .catch((e) => {
         if (current) setLoadError(e.message);

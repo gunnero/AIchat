@@ -1,5 +1,7 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Kontooplysningerne kunne ikke indlæses. Genindlæs siden og prøv igen.":
+    "Your account details could not be loaded. Refresh the page and try again.",
   "Åbn administration, vælg Admins, og tildel en assistent til din konto.":
     "Open administration, choose Admins and assign an assistant to your account.",
   "Assistenter tildelt": "Assistants assigned",

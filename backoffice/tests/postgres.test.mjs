@@ -35,6 +35,57 @@ const maintenance = (fn) =>
   });
 const q = (sql, args = []) => owner.query(sql, args).then((r) => r.rows);
 pgtest(
+  "PostgreSQL: restored cookie sessions retain the account ID across login, refresh and profile loading for both roles",
+  async () => {
+    for (const who of [fixtures.a, fixtures.b, fixtures.admin, fixtures.main]) {
+      const restored = await req(who, "/api/auth/session");
+      assert.equal(restored.statusCode, 200);
+      assert.equal(restored.json().id, who.id);
+      const record = (
+        await q("SELECT email FROM admins WHERE id=$1", [who.id])
+      )[0];
+      const login = await req(who, "/api/auth/login", "POST", {
+        email: record.email,
+        password: who.password,
+        code: otp(who.secret).generate(),
+      });
+      assert.equal(login.statusCode, 200, login.body);
+      const cookie = login.cookies.find((c) => c.name === "__Host-ai_session");
+      const signedIn = {
+        headers: {
+          ...who.headers,
+          cookie: cookie.name + "=" + cookie.value,
+          "x-csrf-token": login.json().csrf,
+        },
+      };
+      for (const path of [
+        "/api/auth/session",
+        "/backoffice/api/auth/session",
+      ]) {
+        const refreshed = await req(signedIn, path);
+        assert.equal(refreshed.statusCode, 200);
+        assert.deepEqual(refreshed.json(), login.json());
+        assert.equal(refreshed.json().id, who.id);
+      }
+      const account = await req(signedIn, "/api/account");
+      assert.equal(account.statusCode, 200);
+      assert.equal(account.json().id, login.json().id);
+      assert.equal(
+        (
+          await req(signedIn, "/api/account/profile", "PUT", {
+            name: "Restored profile",
+          })
+        ).statusCode,
+        200,
+      );
+      assert.equal(
+        (await req(signedIn, "/api/auth/session")).json().name,
+        "Restored profile",
+      );
+    }
+  },
+);
+pgtest(
   "PostgreSQL: personal profiles are session-owned, persistent and separate from protected identity",
   async () => {
     const { a, b, admin, main } = fixtures;

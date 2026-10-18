@@ -249,7 +249,7 @@ export async function buildServer({
       sid &&
       (await db
         .prepare(
-          "SELECT sessions.*,COALESCE(account_profiles.display_name,admins.name) AS name,admins.email,admins.username,admins.role,admins.locale,admins.customer_id FROM sessions JOIN admins ON admins.id=sessions.admin_id LEFT JOIN account_profiles ON account_profiles.account_id=admins.id WHERE hash=?",
+          "SELECT sessions.*,admins.id AS id,COALESCE(account_profiles.display_name,admins.name) AS name,admins.email,admins.username,admins.role,admins.locale,admins.customer_id FROM sessions JOIN admins ON admins.id=sessions.admin_id LEFT JOIN account_profiles ON account_profiles.account_id=admins.id WHERE hash=?",
         )
         .get(digest(sid)));
     if (
