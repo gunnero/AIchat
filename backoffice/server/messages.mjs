@@ -1,5 +1,12 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Dette er et nøgle-ID. Indsæt projektets ID, som starter med proj_.":
+    "This is a key ID. Paste the project ID starting with proj_.",
+  "Indsæt projektets ID fra OpenAI. Det starter med proj_.":
+    "Paste the project ID from OpenAI. It starts with proj_.",
+  "Kopiér projekt-ID'et fra projektets indstillinger i OpenAI. Det starter med proj_.":
+    "Copy the project ID from your project's settings in OpenAI. It starts with proj_.",
+  "Åbn OpenAI-indstillinger": "Open OpenAI settings",
   "Bekræft ændringen": "Confirm this change",
   "Åbn din authenticator-app, og indtast den 6-cifrede kode for at gennemføre ændringen.":
     "Open your authenticator app and enter the 6-digit code to finish this change.",

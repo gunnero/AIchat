@@ -401,6 +401,62 @@ test("failed replacement preserves the old key, and a successful replacement inc
     2,
   );
 });
+test("invalid project IDs get specific bilingual guidance before any provider check, and copied whitespace is normalized", async (t) => {
+  const checked = [];
+  const f = await fixture(t, {
+    providerCheck: async (_key, project) => {
+      checked.push(project);
+      return "ok";
+    },
+  });
+  await f.owner();
+  for (const locale of ["en", "da"]) {
+    for (const projectRef of [
+      "key_synthetic_id",
+      "sk-proj-synthetic_wrong_field",
+      "proj_",
+    ]) {
+      const response = await f.req(
+        "/connections",
+        "POST",
+        {
+          label: "Synthetic connection",
+          projectRef,
+          environment: "test",
+          apiKey: fixtureKey,
+        },
+        { "accept-language": locale },
+      );
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().code, "invalid_project_id");
+      assert.equal(
+        response.json().message,
+        locale === "en"
+          ? "Paste the project ID from OpenAI. It starts with proj_."
+          : "Indsæt projektets ID fra OpenAI. Det starter med proj_.",
+      );
+      if (projectRef !== "proj_") assert.ok(!response.body.includes(projectRef));
+      assert.ok(!response.body.includes(fixtureKey));
+    }
+  }
+  assert.equal(checked.length, 0);
+  assert.equal(
+    f.app.db.prepare("SELECT count(*) AS n FROM connections").get().n,
+    0,
+  );
+  const valid = await f.req("/connections", "POST", {
+    label: "Synthetic connection",
+    projectRef: "  proj_valid-id_123  ",
+    environment: "test",
+    apiKey: fixtureKey,
+  });
+  assert.equal(valid.statusCode, 200);
+  assert.deepEqual(checked, ["proj_valid-id_123"]);
+  assert.equal(
+    f.app.db.prepare("SELECT project_ref FROM connections").get().project_ref,
+    "proj_valid-id_123",
+  );
+});
 test("fresh MFA is required after ten minutes for API credential changes", async (t) => {
   const f = await fixture(t);
   await f.owner();

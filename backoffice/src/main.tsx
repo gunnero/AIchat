@@ -1711,11 +1711,27 @@ function ConnectionForm({
   busy: boolean;
   save: (v: unknown) => Promise<boolean>;
 }) {
+  const projectInput = useRef<HTMLInputElement>(null);
+  const [projectError, setProjectError] = useState("");
+  const validProject = (value: string) =>
+    /^proj_[A-Za-z0-9_-]{3,100}$/.test(value);
+  const projectMessage = (value: string) =>
+    value.startsWith("key_")
+      ? t("Dette er et nøgle-ID. Indsæt projektets ID, som starter med proj_.")
+      : t("Indsæt projektets ID fra OpenAI. Det starter med proj_.");
   return (
     <form
       onSubmit={(e) => {
         const form = e.currentTarget,
           f = values(e);
+        if (!c) {
+          f.projectRef = f.projectRef.trim();
+          if (!validProject(f.projectRef)) {
+            setProjectError(projectMessage(f.projectRef));
+            projectInput.current?.focus();
+            return;
+          }
+        }
         save(c ? { apiKey: f.apiKey, revision: c.revision } : f).then((ok) => {
           if (ok) form.reset();
         });
@@ -1741,13 +1757,49 @@ function ConnectionForm({
           <label>
             {t("OpenAI-projekt-ID")}{" "}
             <input
+              ref={projectInput}
               name="projectRef"
-              placeholder="proj_…"
-              pattern="proj_[A-Za-z0-9_-]{3,100}"
+              placeholder="proj_abc123"
+              pattern={"proj_[A-Za-z0-9_\\-]{3,100}"}
               maxLength={105}
               required
+              spellCheck={false}
+              autoCapitalize="none"
+              autoCorrect="off"
+              aria-invalid={!!projectError}
+              aria-describedby={
+                projectError
+                  ? "connection-project-help connection-project-error"
+                  : "connection-project-help"
+              }
+              onChange={() => setProjectError("")}
+              onBlur={(e) => {
+                e.currentTarget.value = e.currentTarget.value.trim();
+              }}
+              onInvalid={(e) => {
+                e.preventDefault();
+                setProjectError(projectMessage(e.currentTarget.value.trim()));
+                e.currentTarget.focus();
+              }}
             />
           </label>
+          <p className="footnote" id="connection-project-help">
+            {t(
+              "Kopiér projekt-ID'et fra projektets indstillinger i OpenAI. Det starter med proj_.",
+            )}{" "}
+            <a
+              href="https://platform.openai.com/settings/organization/general"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {t("Åbn OpenAI-indstillinger")}
+            </a>
+          </p>
+          {projectError && (
+            <p className="alert" id="connection-project-error" role="alert">
+              {projectError}
+            </p>
+          )}
           <label>
             {t("Miljø")}{" "}
             <select name="environment" defaultValue="test">

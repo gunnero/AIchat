@@ -386,3 +386,79 @@ test("an expired session during code verification returns to sign-in and never r
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(writes).toHaveLength(1);
 });
+
+test.each(["en", "da"] as const)(
+  "connection setup explains incorrect project IDs beside the field, keeps entries and accepts a corrected ID (%s)",
+  async (language) => {
+    setLanguage(language);
+    const saved: unknown[] = [];
+    mocked.mockImplementation(async (path, method = "GET", body) => {
+      if (path === "/auth/session") return session;
+      if (method === "GET") return [];
+      if (path === "/connections" && method === "POST") {
+        saved.push(body);
+        return { id: "synthetic-connection" };
+      }
+      throw new Error("Unexpected project-ID test request");
+    });
+    render(<App />);
+    const { user, dialog } = await openConnection();
+    const project = within(dialog).getByLabelText(t("OpenAI-projekt-ID"));
+    const pattern = new RegExp(
+      "^(?:" + project.getAttribute("pattern") + ")$",
+      "v",
+    );
+    expect(pattern.test("proj_valid-id_123")).toBe(true);
+    expect(pattern.test("key_synthetic")).toBe(false);
+    for (const value of [
+      "key_synthetic",
+      "sk-proj-synthetic-not-a-project",
+      "proj_",
+    ]) {
+      await user.clear(project);
+      await user.type(project, value);
+      await submitConnection(user, dialog);
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+        t(
+          value.startsWith("key_")
+            ? "Dette er et nøgle-ID. Indsæt projektets ID, som starter med proj_."
+            : "Indsæt projektets ID fra OpenAI. Det starter med proj_.",
+        ),
+      );
+      expect(project).toHaveFocus();
+      expect(project).toHaveAttribute("aria-invalid", "true");
+      expect(within(dialog).getByLabelText(t("API-nøgle"))).toHaveValue(
+        syntheticKey,
+      );
+      expect(
+        within(dialog).getByLabelText(t("Navn på forbindelsen")),
+      ).toHaveValue("Synthetic connection");
+      expect(saved).toHaveLength(0);
+      expect(
+        mocked.mock.calls.every(([, method = "GET"]) => method === "GET"),
+      ).toBe(true);
+    }
+    const link = within(dialog).getByRole("link", {
+      name: t("Åbn OpenAI-indstillinger"),
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://platform.openai.com/settings/organization/general",
+    );
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    await user.clear(project);
+    await user.type(project, "  proj_valid-id_123  ");
+    await submitConnection(user, dialog);
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(saved).toEqual([
+      {
+        label: "Synthetic connection",
+        projectRef: "proj_valid-id_123",
+        environment: "production",
+        apiKey: syntheticKey,
+      },
+    ]);
+  },
+);

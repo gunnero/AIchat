@@ -31,7 +31,10 @@ const email = z
   .transform((s) => s.toLowerCase());
 const code = z.string().regex(/^\d{6}$/);
 const password = z.string().min(14).max(256);
-const projectRef = z.string().regex(/^proj_[A-Za-z0-9_-]{3,100}$/);
+const projectRef = z
+  .string()
+  .trim()
+  .regex(/^proj_[A-Za-z0-9_-]{3,100}$/);
 const keyInput = z
   .string()
   .min(25)
@@ -330,12 +333,20 @@ export async function buildServer({
   });
   app.setErrorHandler((error, r, reply) => {
     if (error instanceof Problem)
-      return reply
-        .code(error.status)
-        .send({
-          message: error.message,
-          ...(error.code ? { code: error.code } : {}),
-        });
+      return reply.code(error.status).send({
+        message: error.message,
+        ...(error.code ? { code: error.code } : {}),
+      });
+    if (
+      error instanceof z.ZodError &&
+      r.method === "POST" &&
+      r.routeOptions.url === P + "/connections" &&
+      error.issues.some((issue) => issue.path[0] === "projectRef")
+    )
+      return reply.code(400).send({
+        code: "invalid_project_id",
+        message: "Indsæt projektets ID fra OpenAI. Det starter med proj_.",
+      });
     if (error instanceof z.ZodError)
       return reply.code(400).send({
         message:
