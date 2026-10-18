@@ -12,6 +12,7 @@ test("all Danish API messages and static UI text have translations, while user c
     "server/customer.mjs",
     "src/CustomerWorkspace.tsx",
     "src/SecurityConfirmation.tsx",
+    "src/AuthenticatorSetup.tsx",
     "src/PromptImportForm.tsx",
     "src/PlatformPromptForm.tsx",
     "src/main.tsx",

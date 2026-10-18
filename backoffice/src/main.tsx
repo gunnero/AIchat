@@ -2,6 +2,7 @@ import { api, ApiError, type Session } from "./client";
 import { CustomerWorkspace } from "./CustomerWorkspace";
 import { SecurityConfirmation } from "./SecurityConfirmation";
 import { PlatformPromptForm } from "./PlatformPromptForm";
+import { AuthenticatorSetup } from "./AuthenticatorSetup";
 import { t, getLanguage, useLanguage, LanguagePicker } from "./i18n";
 import {
   useEffect,
@@ -1321,12 +1322,7 @@ function Setup() {
         ) : (
           setup && (
             <>
-              <p>
-                {t(
-                  "Tilføj først denne opsætningsnøgle manuelt i din authenticator som en tidsbaseret kode. Gem den i din godkendte adgangskodeboks til gendannelse.",
-                )}{" "}
-              </p>
-              <code className="setup-secret">{setup.secret}</code>
+              <AuthenticatorSetup uri={setup.uri} secret={setup.secret} />
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
@@ -2133,6 +2129,7 @@ function Registration({ token }: { token: string }) {
       name: string;
       email: string;
       secret: string;
+      uri: string;
       csrf: string;
       role: string;
     } | null>(null),
@@ -2187,12 +2184,7 @@ function Registration({ token }: { token: string }) {
             <p>
               <strong>{details.name}</strong> · {details.email} · {details.role}
             </p>
-            <p>
-              {t(
-                "Tilføj denne nøgle i din authenticator som en tidsbaseret konto. Gem den sikkert til gendannelse.",
-              )}
-            </p>
-            <code className="setup-secret">{details.secret}</code>
+            <AuthenticatorSetup uri={details.uri} secret={details.secret} />
             <form
               onSubmit={async (e) => {
                 const f = values(e);

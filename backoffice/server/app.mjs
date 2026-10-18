@@ -395,16 +395,17 @@ export async function buildServer({
       path: P + "/setup",
       maxAge: 600,
     });
+    const identity =
+      (await db
+        .prepare(
+          "SELECT name,email,username FROM owner_identity WHERE singleton=1",
+        )
+        .get()) || null;
     return {
       secret,
-      uri: otp(secret).toString(),
+      uri: otp(secret, identity?.email || "Administration").toString(),
       csrf: csrfFor(vaultKey, sid),
-      identity:
-        (await db
-          .prepare(
-            "SELECT name,email,username FROM owner_identity WHERE singleton=1",
-          )
-          .get()) || null,
+      identity,
     };
   });
   app.post(P + "/setup", async (r, reply) => {

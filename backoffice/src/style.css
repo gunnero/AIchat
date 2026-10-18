@@ -703,6 +703,60 @@ legend {
   margin: 20px 0;
   letter-spacing: 1.5px;
 }
+.authenticator-setup {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin: 24px 0;
+  padding: 24px 0;
+}
+.authenticator-setup h2 {
+  font-size: 23px;
+  line-height: 1.25;
+  margin: 0 0 12px;
+}
+.authenticator-figure {
+  margin: 20px 0;
+  text-align: center;
+}
+.authenticator-qr {
+  background: #fff;
+  padding: 24px;
+  max-width: 284px;
+  margin: 0 auto 14px;
+}
+.authenticator-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.authenticator-figure figcaption {
+  display: grid;
+  gap: 3px;
+  font-size: 15px;
+}
+.authenticator-figure figcaption > span:first-child {
+  color: var(--muted);
+  font-size: 13px;
+}
+.authenticator-account {
+  overflow-wrap: anywhere;
+}
+.authenticator-manual {
+  margin: 20px 0;
+}
+.authenticator-manual summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 10px 0;
+}
+.authenticator-manual summary:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 3px;
+}
+.authenticator-manual .setup-secret {
+  font-size: 13px;
+  margin-bottom: 0;
+}
 .reference {
   color: var(--muted);
 }

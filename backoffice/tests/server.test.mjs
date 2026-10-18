@@ -69,6 +69,16 @@ async function fixture(
     });
     assert.equal(r.statusCode, 200);
     secret = r.json().secret;
+    const provisioning = new URL(r.json().uri);
+    assert.equal(
+      decodeURIComponent(provisioning.pathname.slice(1)),
+      "AI Kundetypeassistent:Administration",
+    );
+    assert.equal(
+      provisioning.searchParams.get("issuer"),
+      "AI Kundetypeassistent",
+    );
+    assert.equal(provisioning.searchParams.get("secret"), secret);
     const c = r.cookies[0].name + "=" + r.cookies[0].value;
     const result = await req(
       "/setup",
@@ -854,6 +864,19 @@ async function invitationFixture(t) {
     const raw = mail[index].text.match(/#invite=([A-Za-z0-9_-]{43})/)[1];
     const r = await f.req("/register/begin", "POST", { token: raw });
     assert.equal(r.statusCode, 200);
+    const provisioning = new URL(r.json().uri);
+    assert.equal(
+      decodeURIComponent(provisioning.pathname.slice(1)),
+      "AI Kundetypeassistent:" + r.json().email,
+    );
+    assert.equal(
+      provisioning.searchParams.get("issuer"),
+      "AI Kundetypeassistent",
+    );
+    assert.equal(provisioning.searchParams.get("secret"), r.json().secret);
+    assert.equal(provisioning.searchParams.get("algorithm"), "SHA1");
+    assert.equal(provisioning.searchParams.get("digits"), "6");
+    assert.equal(provisioning.searchParams.get("period"), "30");
     return {
       raw,
       secret: r.json().secret,
@@ -1199,6 +1222,12 @@ test("operator owner reservation is enforced during local enrollment and first a
   };
   const start = await f.req("/setup", "GET", undefined, headers);
   assert.equal(start.json().identity.username, "reservedowner");
+  const provisioning = new URL(start.json().uri);
+  assert.equal(
+    decodeURIComponent(provisioning.pathname.slice(1)),
+    "AI Kundetypeassistent:reserved@example.test",
+  );
+  assert.equal(provisioning.searchParams.get("secret"), start.json().secret);
   const input = {
     name: "Other Owner",
     email: "other@example.test",

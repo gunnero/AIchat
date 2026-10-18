@@ -13,6 +13,7 @@ import "@testing-library/jest-dom/vitest";
 import { App } from "./main";
 import { api, ApiError, type Session } from "./client";
 import { setLanguage, t } from "./i18n";
+import { TOTP, Secret } from "otpauth";
 
 vi.mock("./client", async (original) => ({
   ...(await original<typeof import("./client")>()),
@@ -50,6 +51,52 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+
+test.each(["invitation", "owner"])(
+  "%s enrollment displays the account's authenticator QR and still requires a confirmation code",
+  async (flow) => {
+    const secret = Secret.fromUTF8("synthetic-enrollment").base32;
+    const uri = new TOTP({
+      issuer: "AI Kundetypeassistent",
+      label: "invited@example.test",
+      secret,
+    }).toString();
+    history.replaceState(
+      null,
+      "",
+      flow === "invitation"
+        ? "/backoffice/#invite=synthetic-invite"
+        : "/backoffice/?setup=1",
+    );
+    mocked.mockResolvedValue({
+      name: "Synthetic Person",
+      email: "invited@example.test",
+      role: "Customer",
+      secret,
+      uri,
+      csrf: "synthetic",
+      identity: null,
+    });
+    render(<App />);
+    if (flow === "invitation")
+      await userEvent.click(
+        screen.getByRole("button", { name: "Continue to registration" }),
+      );
+    expect(
+      await screen.findByRole("img", {
+        name: "QR code for two-factor sign-in · AI Kundetypeassistent · invited@example.test",
+      }),
+    ).toBeVisible();
+    expect(screen.getByLabelText(t("Authenticator-kode"))).toBeRequired();
+    expect(screen.getByText(secret)).not.toBeVisible();
+    expect(mocked).not.toHaveBeenCalledWith(
+      "/register/complete",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  },
+);
 
 async function openConnection() {
   const user = userEvent.setup();

@@ -1,5 +1,19 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Opsæt totrinslogin": "Set up two-factor sign-in",
+  "Åbn din authenticator-app på telefonen, vælg Tilføj konto, og scan koden.":
+    "Open your authenticator app on your phone, choose Add account and scan the code.",
+  "QR-kode til totrinslogin": "QR code for two-factor sign-in",
+  "Navn i din authenticator": "Name in your authenticator",
+  "QR-koden kunne ikke vises. Brug opsætningsnøglen nedenfor.":
+    "The QR code could not be displayed. Use the setup key below.",
+  "Indtast derefter appens 6-cifrede kode i formularen nedenfor.":
+    "Then enter the app's 6-digit code in the form below.",
+  "Kan du ikke scanne? Brug en opsætningsnøgle": "Can't scan? Use a setup key",
+  "Vælg manuel indtastning i din authenticator, og brug denne nøgle. Vælg Tidsbaseret som kontotype.":
+    "Choose manual entry in your authenticator and use this key. Select Time-based as the account type.",
+  "Hold QR-koden og opsætningsnøglen private.":
+    "Keep the QR code and setup key private.",
   "Tilføj en API-forbindelse til projektet først.":
     "Add an API connection to this project first.",
   "Navnet bruges allerede i projektet. Vælg et andet navn.":
