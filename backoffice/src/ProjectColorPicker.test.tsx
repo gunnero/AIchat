@@ -65,7 +65,7 @@ test("derived text contrast meets 4.5:1 on backgrounds, controls and hover surfa
     null,
   ]) {
     expect(projectColor(value)).toBe("black");
-    expect(projectColorStyle(value)).toBeUndefined();
+    expect(projectColorStyle(value)).toEqual(projectColorStyle("black"));
   }
   for (const r of [0, 51, 102, 153, 204, 255])
     for (const g of [0, 51, 102, 153, 204, 255])
@@ -81,5 +81,35 @@ test("derived text contrast meets 4.5:1 on backgrounds, controls and hover surfa
               (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05),
             ).toBeGreaterThanOrEqual(4.5);
           }
+        for (const surface of [
+          "#ffffff",
+          style["--cw-tint"],
+          style["--cw-tint-hover"],
+        ])
+          for (const ink of [style["--cw-ink"], style["--cw-ink-hover"]]) {
+            const x = luminance(surface),
+              y = luminance(ink);
+            expect(
+              (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05),
+            ).toBeGreaterThanOrEqual(4.5);
+          }
       }
+});
+test("all preset projects provide matching readable accents for content controls and links", () => {
+  for (const color of ["black", "yellow", "purple", "green"]) {
+    const style = projectColorStyle(color) as Record<string, string>;
+    expect(style["--cw-bg"]).toBeUndefined();
+    expect(style["--cw-ink"]).toMatch(/^#[a-f0-9]{6}$/);
+    for (const surface of [
+      "#ffffff",
+      style["--cw-tint"],
+      style["--cw-tint-hover"],
+    ]) {
+      const x = luminance(surface),
+        y = luminance(style["--cw-ink"]);
+      expect(
+        (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05),
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  }
 });

@@ -43,9 +43,17 @@ const hex = (color: number[]) =>
 const mix = (a: number[], b: number[], amount: number) =>
   a.map((n, i) => Math.round(n + (b[i] - n) * amount));
 // Only validated six-digit hex and locally derived RGB values reach CSS properties.
-export function projectColorStyle(value: unknown): CSSProperties | undefined {
-  if (!isCustomColor(value)) return undefined;
-  const bg = rgb(value),
+export function projectColorStyle(value: unknown): CSSProperties {
+  const color = projectColor(value);
+  const background = isCustomColor(color)
+    ? color
+    : {
+        black: "#000000",
+        yellow: "#f8dc69",
+        purple: "#633b88",
+        green: "#275a40",
+      }[color];
+  const bg = rgb(background),
     black = [0, 0, 0],
     white = [255, 255, 255];
   const fg = contrast(bg, black) >= contrast(bg, white) ? black : white;
@@ -56,12 +64,33 @@ export function projectColorStyle(value: unknown): CSSProperties | undefined {
       contrast(candidate, fg) >= 4.5 ? candidate : mix(bg, opposite, amount),
     );
   };
+  const tint = mix(bg, white, 0.94),
+    tintHover = mix(bg, white, 0.88);
+  // Links, outlines and focus rings must remain readable on white and tints.
+  let low = 0,
+    high = 1;
+  if (contrast(bg, tintHover) >= 4.5) high = 0;
+  else
+    for (let i = 0; i < 24; i++) {
+      const mid = (low + high) / 2;
+      if (contrast(mix(bg, black, mid), tintHover) >= 4.5) high = mid;
+      else low = mid;
+    }
+  const ink = mix(bg, black, high);
   return {
-    "--cw-bg": value.toLowerCase(),
-    "--cw-fg": hex(fg),
-    "--cw-muted": hex(fg),
-    "--cw-border": hex(fg),
-    "--cw-control": surface(0.1),
-    "--cw-hover": surface(0.2),
+    "--cw-ink": hex(ink),
+    "--cw-ink-hover": hex(mix(ink, black, 0.2)),
+    "--cw-tint": hex(tint),
+    "--cw-tint-hover": hex(tintHover),
+    ...(isCustomColor(color)
+      ? {
+          "--cw-bg": background,
+          "--cw-fg": hex(fg),
+          "--cw-muted": hex(fg),
+          "--cw-border": hex(fg),
+          "--cw-control": surface(0.1),
+          "--cw-hover": surface(0.2),
+        }
+      : {}),
   } as CSSProperties;
 }

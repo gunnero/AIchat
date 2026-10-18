@@ -5,6 +5,7 @@
   overflow: hidden;
   background: #fff;
   color: #171717;
+  scrollbar-color: var(--cw-ink) var(--cw-tint);
 }
 .cw-sidebar,
 .cw-mobile-sidebar {
@@ -20,6 +21,7 @@
   background: var(--cw-bg);
   color: var(--cw-fg);
   border: 0;
+  scrollbar-color: var(--cw-border) var(--cw-bg);
 }
 .cw-brand {
   display: flex;
@@ -400,8 +402,9 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  background: #000;
-  color: #fff;
+  background: var(--cw-bg);
+  color: var(--cw-fg);
+  border: 1px solid var(--cw-ink);
   border-radius: 9px;
   padding: 10px 15px;
   font-size: 16px;
@@ -481,8 +484,8 @@
 }
 .cw-dialog .button:not(.secondary),
 .cw-welcome > .button {
-  background: #000;
-  color: #fff;
+  background: var(--cw-bg);
+  color: var(--cw-fg);
 }
 .cw-dialog label {
   display: grid;
@@ -509,6 +512,92 @@
 .cw-sidebar :focus-visible,
 .cw-mobile-sidebar :focus-visible {
   outline-color: var(--cw-fg);
+}
+.cw-shell .button {
+  background: var(--cw-bg);
+  color: var(--cw-fg);
+  border-color: var(--cw-ink);
+}
+.cw-shell .button:not(.secondary):hover,
+.cw-composer button:hover:not(:disabled) {
+  background: var(--cw-hover);
+  color: var(--cw-fg);
+}
+.cw-shell .button.secondary {
+  background: #fff;
+  color: var(--cw-ink);
+  border-color: var(--cw-ink);
+}
+.cw-shell .button.secondary:hover {
+  background: var(--cw-tint-hover);
+  color: var(--cw-ink-hover);
+}
+.cw-workspace a:not(.button),
+.cw-shell dialog:not(.cw-mobile-sidebar) a:not(.button) {
+  color: var(--cw-ink);
+  text-decoration-color: currentColor;
+  text-underline-offset: 3px;
+}
+.cw-workspace a:not(.button):hover,
+.cw-shell dialog:not(.cw-mobile-sidebar) a:not(.button):hover {
+  color: var(--cw-ink-hover);
+}
+.cw-workspace :focus-visible,
+.cw-shell dialog:not(.cw-mobile-sidebar) :focus-visible {
+  outline-color: var(--cw-ink);
+}
+.cw-workspace :is(input, select, textarea),
+.cw-shell dialog:not(.cw-mobile-sidebar) :is(input, select, textarea) {
+  border-color: var(--cw-ink);
+  accent-color: var(--cw-ink);
+}
+.cw-actions button,
+.cw-menu,
+.cw-older,
+.cw-shell dialog:not(.cw-mobile-sidebar) .icon-button,
+.cw-dialog-heading button {
+  color: var(--cw-ink);
+  background: var(--cw-tint);
+  border-color: var(--cw-ink);
+  border-radius: 8px;
+}
+.cw-actions button:hover,
+.cw-menu:hover,
+.cw-older:hover,
+.cw-shell dialog:not(.cw-mobile-sidebar) .icon-button:hover,
+.cw-dialog-heading button:hover {
+  background: var(--cw-tint-hover);
+  color: var(--cw-ink-hover);
+}
+.cw-older,
+.cw-alert button,
+.cw-shell dialog:not(.cw-mobile-sidebar) button:not(.button) {
+  color: var(--cw-ink);
+}
+.cw-composer,
+.cw-shell dialog:not(.cw-mobile-sidebar) {
+  border-color: var(--cw-ink);
+}
+.cw-composer:focus-within {
+  border-color: var(--cw-ink-hover);
+}
+.cw-ai-notice,
+.cw-alert,
+.cw-readonly,
+.cw-shell dialog :is(.notice, .alert) {
+  background: var(--cw-tint);
+  border-color: var(--cw-ink);
+  color: var(--cw-ink);
+}
+.cw-avatar {
+  background: var(--cw-tint);
+  color: var(--cw-ink);
+  border-color: var(--cw-ink);
+}
+.cw-workspace .cw-label,
+.cw-private svg,
+.cw-shell .account-balance strong {
+  color: var(--cw-ink);
 }
 @media (max-width: 1000px) {
   .cw-header {

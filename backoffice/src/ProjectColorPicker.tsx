@@ -89,7 +89,7 @@ export function ProjectColorPicker({ initial }: { initial?: ProjectColor }) {
               style={projectColorStyle(preview)}
             >
               <strong>{t("Dit arbejdsrum")}</strong>
-              <span>{t("Eksempel på sidemenuens farve")}</span>
+              <span>{t("Eksempel på arbejdsrummets farve")}</span>
             </div>
             <p id="custom-color-help" className="footnote">
               {t(
@@ -100,7 +100,9 @@ export function ProjectColorPicker({ initial }: { initial?: ProjectColor }) {
         )}
       </div>
       <p className="footnote">
-        {t("Sidemenuen bruger denne farve, når projektet er valgt.")}
+        {t(
+          "Arbejdsrummets knapper, links og sidemenu følger denne farve, når projektet er valgt.",
+        )}
       </p>
     </fieldset>
   );

@@ -92,6 +92,10 @@ export const english = {
   "Hex-farvekode": "Hex colour code",
   "Dit arbejdsrum": "Your workspace",
   "Eksempel på sidemenuens farve": "Sidebar colour preview",
+  "Eksempel på arbejdsrummets farve": "Workspace colour preview",
+  "Annullér": "Cancel",
+  "Arbejdsrummets knapper, links og sidemenu følger denne farve, når projektet er valgt.":
+    "Workspace buttons, links and the sidebar use this colour when the project is selected.",
   "Brug # og seks tegn, fx #3B82F6. Tekst og knapper tilpasses automatisk, så de er lette at læse.":
     "Use # and six characters, e.g. #3B82F6. Text and buttons adjust automatically to stay readable.",
   "Sidemenuen bruger denne farve, når projektet er valgt.":

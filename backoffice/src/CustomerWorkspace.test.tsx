@@ -58,7 +58,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 test.each(["en", "da"] as const)(
-  "project switching uses the assigned sidebar colour and safely defaults unknown colours (%s)",
+  "project switching updates sidebar and content accents and safely defaults unknown colours (%s)",
   async (language) => {
     setLanguage(language);
     const colored = [
@@ -101,10 +101,48 @@ test.each(["en", "da"] as const)(
       expect((shell as HTMLElement).style.getPropertyValue("--cw-bg")).toBe(
         color.startsWith("#") ? color : "",
       );
+      expect((shell as HTMLElement).style.getPropertyValue("--cw-ink")).toMatch(
+        /^#[a-f0-9]{6}$/,
+      );
     }
     expect(
       mocked.mock.calls.every(([, method = "GET"]) => method === "GET"),
     ).toBe(true);
+  },
+);
+
+test.each(["en", "da"] as const)(
+  "account controls inherit the selected project theme inside the customer workspace (%s)",
+  async (language) => {
+    setLanguage(language);
+    mocked.mockImplementation(async (path) => {
+      if (path === "/customer/projects")
+        return { projects: [{ ...projects[0], color: "#f08a24" }] };
+      if (path === "/account")
+        return {
+          id: session.id,
+          allowance: 300,
+          expires: null,
+          projects: [],
+          usageAvailable: false,
+          billingAvailable: false,
+        };
+      return { items: [], nextCursor: null };
+    });
+    const user = userEvent.setup();
+    render(<CustomerWorkspace session={session} logout={vi.fn()} />);
+    await screen.findByRole("button", { name: t("Start en samtale") });
+    await user.click(screen.getByRole("button", { name: t("Min konto") }));
+    const dialog = await screen.findByRole("dialog", { name: t("Min konto") });
+    const shell = dialog.closest<HTMLElement>(".cw-shell");
+    expect(shell).toHaveAttribute("data-project-color", "#f08a24");
+    expect(shell!.style.getPropertyValue("--cw-ink")).toMatch(/^#[a-f0-9]{6}$/);
+    expect(
+      within(dialog).getByRole("button", { name: t("Gem navn") }),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole("button", { name: t("Skift adgangskode") }),
+    ).toBeVisible();
   },
 );
 
