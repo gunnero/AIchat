@@ -180,6 +180,7 @@ export function App() {
   } | null>(null);
   const [session, setSession] = useState<Session | null>(null),
     [loading, setLoading] = useState(true),
+    [departing, setDeparting] = useState(false),
     [tab, setTab] = useState("overview");
   const [data, setData] = useState<Data>(empty),
     [notice, setNotice] = useState<
@@ -227,7 +228,11 @@ export function App() {
       if (e.persisted) location.reload();
     };
     window.addEventListener("session-expired", clearSession);
-    const pageHide = () => flushSync(clearSession);
+    const pageHide = () =>
+      flushSync(() => {
+        setDeparting(true);
+        clearSession();
+      });
     window.addEventListener("pagehide", pageHide);
     window.addEventListener("pageshow", restore);
     return () => {
@@ -397,6 +402,9 @@ export function App() {
       setVerification({ busy: false, error: err.message });
     }
   }
+  // Clear private content before navigation/BFCache without mounting a login
+  // field that can open the browser's password suggestions during refresh.
+  if (departing) return null;
   if (inviteToken) return <Registration token={inviteToken} />;
   if (setup) return <Setup />;
   if (loading)
@@ -1280,13 +1288,7 @@ function Login({
         >
           <label>
             {t("E-mail eller brugernavn")}{" "}
-            <input
-              name="email"
-              type="text"
-              autoComplete="username"
-              required
-              autoFocus
-            />
+            <input name="email" type="text" autoComplete="username" required />
           </label>
           <label>
             {t("Adgangskode")}{" "}

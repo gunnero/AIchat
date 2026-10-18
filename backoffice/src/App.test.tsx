@@ -52,6 +52,54 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+test.each([
+  { role: "Admin", path: "/backoffice/", language: "en" },
+  { role: "Admin", path: "/backoffice/", language: "da" },
+  { role: "Admin", path: "/", language: "en" },
+  { role: "Admin", path: "/", language: "da" },
+  { role: "Customer", path: "/", language: "en" },
+  { role: "Customer", path: "/", language: "da" },
+] as const)(
+  "refresh clears private content without mounting or focusing sign-in ($role $path $language)",
+  async ({ role, path, language }) => {
+    history.replaceState(null, "", path);
+    setLanguage(language);
+    mocked.mockImplementation(async (route) => {
+      if (route === "/auth/session") return { ...session, role };
+      if (route === "/customer/projects")
+        return { projects: [], aiEnabled: false };
+      return [];
+    });
+    render(<App />);
+    await screen.findByRole("button", { name: t("Min konto") });
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    fireEvent(window, new Event("pagehide"));
+    expect(screen.queryByRole("button", { name: t("Min konto") })).toBeNull();
+    expect(screen.queryByText(session.name)).toBeNull();
+    expect(screen.queryByLabelText(t("E-mail eller brugernavn"))).toBeNull();
+    expect(screen.queryByLabelText(t("Adgangskode"))).toBeNull();
+    expect(focus).not.toHaveBeenCalled();
+  },
+);
+
+test.each(["/", "/backoffice/"])(
+  "sign-in at %s keeps saved-password support without focusing credentials automatically",
+  async (path) => {
+    history.replaceState(null, "", path);
+    mocked.mockRejectedValue(new ApiError(401, "Sign in required"));
+    render(<App />);
+    const email = await screen.findByLabelText(t("E-mail eller brugernavn"));
+    const password = screen.getByLabelText(t("Adgangskode"));
+    expect(email).not.toHaveFocus();
+    expect(email).toHaveAttribute("autocomplete", "username");
+    expect(password).toHaveAttribute("autocomplete", "current-password");
+    await userEvent.click(email);
+    expect(email).toHaveFocus();
+    await userEvent.tab();
+    expect(password).toHaveFocus();
+  },
+);
+
 test.each(["invitation", "owner"])(
   "%s enrollment displays the account's authenticator QR and still requires a confirmation code",
   async (flow) => {
@@ -203,23 +251,32 @@ test.each(["en", "da"] as const)(
 test.each(["session-expired", "pagehide"])(
   "%s still clears the dialog and its unsaved key before another sign-in",
   async (event) => {
-    render(<App />);
+    const view = render(<App />);
     const { user } = await openConnection();
     fireEvent(window, new Event(event));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: t("Log ind") }),
-    ).toBeInTheDocument();
-    await user.type(
-      screen.getByLabelText(t("E-mail eller brugernavn")),
-      "admin@example.test",
+    if (event === "pagehide") {
+      expect(screen.queryByLabelText(t("Adgangskode"))).toBeNull();
+      view.unmount();
+      render(<App />);
+    } else {
+      expect(
+        screen.getByRole("button", { name: t("Log ind") }),
+      ).toBeInTheDocument();
+      await user.type(
+        screen.getByLabelText(t("E-mail eller brugernavn")),
+        "admin@example.test",
+      );
+      await user.type(
+        screen.getByLabelText(t("Adgangskode")),
+        "synthetic-password",
+      );
+      await user.type(screen.getByLabelText(t("Authenticator-kode")), "123456");
+      await user.click(screen.getByRole("button", { name: t("Log ind") }));
+    }
+    await user.click(
+      await screen.findByRole("button", { name: t("API-forbindelser") }),
     );
-    await user.type(
-      screen.getByLabelText(t("Adgangskode")),
-      "synthetic-password",
-    );
-    await user.type(screen.getByLabelText(t("Authenticator-kode")), "123456");
-    await user.click(screen.getByRole("button", { name: t("Log ind") }));
     await user.click(
       await screen.findByRole("button", { name: t("Tilføj forbindelse") }),
     );
@@ -406,9 +463,12 @@ test.each(["session-expired", "pagehide"])(
     await confirmCode(user, "222222");
     fireEvent(window, new Event(event));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: t("Log ind") }),
-    ).toBeInTheDocument();
+    if (event === "pagehide")
+      expect(screen.queryByLabelText(t("Adgangskode"))).toBeNull();
+    else
+      expect(
+        screen.getByRole("button", { name: t("Log ind") }),
+      ).toBeInTheDocument();
     await act(async () => {
       finish();
       await response;
