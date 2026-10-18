@@ -1,0 +1,31 @@
+[Unit]
+Description=AI Kundetypeassistent operational job (%i)
+After=network-online.target postgresql@18-ai.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /opt/ai-kundetype-operations/current/operations.py %i
+UMask=0077
+TimeoutStartSec=8min
+StateDirectory=ai-kundetype-operations
+StateDirectoryMode=0700
+RuntimeDirectory=ai-kundetype-operations
+RuntimeDirectoryMode=0711
+RuntimeDirectoryPreserve=yes
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=-/mnt/HC_Volume_106669788/ai-kundetypeassistent-backups
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETUID CAP_SETGID
+MemoryMax=512M
+Nice=10
+IOSchedulingClass=idle

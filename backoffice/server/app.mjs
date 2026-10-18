@@ -111,6 +111,7 @@ export async function buildServer({
   bootstrapHash,
   passwordCheck = verifyPassword,
   mailer = async () => false,
+  telemetry,
 }) {
   if (!Buffer.isBuffer(vaultKey) || vaultKey.length !== 32)
     throw new Error("A 32-byte vault key is required");
@@ -134,6 +135,19 @@ export async function buildServer({
     trustProxy: false,
     requestTimeout: 20000,
   });
+  if (telemetry) {
+    app.decorateRequest("startedAt", null);
+    app.addHook("onRequest", async (r) => {
+      r.startedAt = performance.now();
+    });
+    app.addHook("onResponse", async (r, reply) => {
+      // Only numeric aggregates: no paths, queries, IDs, IPs, headers or content.
+      telemetry.record(
+        reply.statusCode,
+        Math.max(0, performance.now() - r.startedAt),
+      );
+    });
+  }
   const db = database || openDatabase(dbPath);
   app.decorate("db", db);
   app.addHook("onClose", () => db.close());

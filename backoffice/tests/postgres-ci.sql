@@ -6,3 +6,5 @@ CREATE ROLE ai_control LOGIN PASSWORD 'synthetic-ci-only';
 CREATE ROLE ai_chat LOGIN PASSWORD 'synthetic-ci-only';
 CREATE DATABASE ai_customer OWNER ai_owner;
 CREATE DATABASE ai_restore OWNER ai_owner;
+CREATE DATABASE ai_ops_probe OWNER ai_owner;
+CREATE DATABASE ai_ops_restore OWNER ai_owner;

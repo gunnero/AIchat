@@ -36,7 +36,12 @@ async function command(name, args) {
     );
   }
 }
-export async function backupPostgres({ databaseUrl, state, destination }) {
+export async function backupPostgres({
+  databaseUrl,
+  state,
+  destination,
+  vaultKeyFile = process.env.VAULT_KEY_FILE || join(state, "vault.key"),
+}) {
   if (resolve(state) === resolve(destination))
     throw new Error("Specify a new private backup directory");
   const schema = await schemaVersion(databaseUrl);
@@ -49,7 +54,7 @@ export async function backupPostgres({ databaseUrl, state, destination }) {
   ]);
   if ((await schemaVersion(databaseUrl)) !== schema)
     throw new Error("Database schema changed during backup");
-  await copyFile(join(state, "vault.key"), join(destination, "vault.key"));
+  await copyFile(vaultKeyFile, join(destination, "vault.key"));
   try {
     await copyFile(
       join(state, "deletions.jsonl"),

@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly synthetic AI Kundetypeassistent recovery rehearsal
+[Timer]
+OnCalendar=Sun *-*-* 04:37:00
+RandomizedDelaySec=5min
+Persistent=true
+Unit=ai-kundetype-job@drill.service
+[Install]
+WantedBy=timers.target

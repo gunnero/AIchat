@@ -1,3 +1,5 @@
+> Historical initial-cutover record. Current production uses PostgreSQL 18/schema 8 and the later workspace releases. Follow [current operations](operations.md) for scheduled backups, monitoring and recovery. Outbound operational email was delivered and confirmed on 18 October; invitation end-to-end testing remains separate.
+
 # Customer workspace deployment — 18 October 2026
 
 The real application is live at [ai.igurl.dk](https://ai.igurl.dk/), administration at [/backoffice/](https://ai.igurl.dk/backoffice/) and the synthetic demonstration at [/demo/](https://ai.igurl.dk/demo/). AI replies and sharing remain disabled in the real workspace. Invitation delivery is still waiting for Hetzner's SMTP unblock.

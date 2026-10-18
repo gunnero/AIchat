@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly encrypted AI Kundetypeassistent backup
+[Timer]
+OnCalendar=*-*-* *:17:00
+RandomizedDelaySec=60
+Persistent=true
+Unit=ai-kundetype-job@backup.service
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=AI Kundetypeassistent health and job monitoring
+[Timer]
+OnBootSec=4min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Unit=ai-kundetype-job@monitor.service
+[Install]
+WantedBy=timers.target
