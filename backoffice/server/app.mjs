@@ -67,6 +67,7 @@ const projectInput = z
         z.enum(["black", "yellow", "purple", "green"]),
         z
           .string()
+          .length(7)
           .regex(/^#[0-9a-fA-F]{6}$/)
           .transform((v) => v.toLowerCase()),
       ])

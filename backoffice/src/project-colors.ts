@@ -10,7 +10,11 @@ export const projectColors = [
 export type PresetColor = (typeof projectColors)[number]["id"];
 export type ProjectColor = PresetColor | `#${string}`;
 export function isCustomColor(value: unknown): value is `#${string}` {
-  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
+  return (
+    typeof value === "string" &&
+    value.length === 7 &&
+    /^#[0-9a-fA-F]{6}$/.test(value)
+  );
 }
 export function projectColor(value: unknown): ProjectColor {
   if (isCustomColor(value)) return value.toLowerCase() as ProjectColor;

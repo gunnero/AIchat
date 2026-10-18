@@ -59,6 +59,7 @@ test("derived text contrast meets 4.5:1 on backgrounds, controls and hover surfa
   for (const value of [
     "red",
     "#fff",
+    "#abcdef\n",
     "#abcdef;background:url(evil)",
     "url(evil)",
     null,

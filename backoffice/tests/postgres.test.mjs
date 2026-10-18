@@ -647,6 +647,7 @@ pgtest(
     for (const color of [
       "red",
       "#fff",
+      "#abcdef\n",
       "#12345g",
       "#12345678",
       "#123456; color:red",

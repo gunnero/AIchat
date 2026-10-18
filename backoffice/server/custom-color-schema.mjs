@@ -7,5 +7,5 @@ export const sqliteAppearanceTable = `CREATE TABLE IF NOT EXISTS project_appeara
 export const customColorUpgrade = `ALTER TABLE project_appearance
  DROP CONSTRAINT project_appearance_color_check;
 ALTER TABLE project_appearance ADD CONSTRAINT project_appearance_color_check
- CHECK(color IN ('black','yellow','purple','green') OR color ~ '^#[0-9a-f]{6}$');
+ CHECK(color IN ('black','yellow','purple','green') OR (length(color)=7 AND color ~ '^#[0-9a-f]{6}$'));
 INSERT INTO schema_version VALUES(8);`;
