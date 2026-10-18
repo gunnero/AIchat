@@ -1,4 +1,4 @@
-> Historical initial-cutover record. Current production uses PostgreSQL 18/schema 8 and the later workspace releases. Follow [current operations](operations.md) for scheduled backups, monitoring and recovery. Outbound operational email was delivered and confirmed on 18 October; invitation end-to-end testing remains separate.
+> Historical initial-cutover record. Current production uses PostgreSQL 18/schema 9 and the later workspace releases. Follow [current operations](operations.md) for scheduled backups, monitoring and recovery. Outbound operational email was delivered and confirmed on 18 October; invitation end-to-end testing remains separate.
 
 # Customer workspace deployment — 18 October 2026
 

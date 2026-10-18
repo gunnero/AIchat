@@ -4,6 +4,7 @@ import { t, LanguagePicker } from "./i18n";
 import { Brand } from "./Brand";
 import { Save, values } from "./FormActions";
 import { AuthenticatorSetup } from "./AuthenticatorSetup";
+import { CodeSheet } from "./RecoveryCodes";
 export default function Registration({ token }: { token: string }) {
   const [details, setDetails] = useState<{
       name: string;
@@ -16,6 +17,7 @@ export default function Registration({ token }: { token: string }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [done, setDone] = useState(false);
+  const [codes, setCodes] = useState<string[] | null>(null);
   return (
     <div className="auth-page">
       <Brand />
@@ -23,7 +25,15 @@ export default function Registration({ token }: { token: string }) {
       <section className="auth-card">
         <p className="eyebrow">{t("DIN PERSONLIGE INVITATION")}</p>
         <h1>{t("Velkommen til Kundetypeassistent")}</h1>
-        {done ? (
+        {codes ? (
+          <CodeSheet
+            codes={codes}
+            done={() => {
+              setCodes(null);
+              setDone(true);
+            }}
+          />
+        ) : done ? (
           <>
             <p className="notice">
               {t(
@@ -71,9 +81,15 @@ export default function Registration({ token }: { token: string }) {
                 setBusy(true);
                 setError("");
                 try {
-                  await api("/register/complete", "POST", f, details.csrf);
+                  const result = await api<{ codes?: string[] }>(
+                    "/register/complete",
+                    "POST",
+                    f,
+                    details.csrf,
+                  );
                   setDetails(null);
-                  setDone(true);
+                  if (result.codes) setCodes(result.codes);
+                  else setDone(true);
                 } catch (e) {
                   setError((e as Error).message);
                 } finally {

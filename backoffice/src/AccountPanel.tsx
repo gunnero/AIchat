@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type Session } from "./client";
 import { t, useLanguage, getLanguage } from "./i18n";
 import { Dialog } from "./Dialog";
+import { RecoveryCodes } from "./RecoveryCodes";
 
 type Account = {
   id: string;
@@ -202,6 +203,7 @@ export function AccountPanel({
           {t("Skift adgangskode")}
         </button>
         {password && <PasswordForm session={session} logout={logout} />}
+        <RecoveryCodes key={session.id} session={session} />
       </section>
     </div>
   );

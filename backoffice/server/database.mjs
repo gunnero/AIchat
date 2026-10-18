@@ -3,6 +3,7 @@ import { linkTable } from "./platform-schema.mjs";
 import { accountTables } from "./account-schema.mjs";
 import { sqliteAppearanceTable } from "./custom-color-schema.mjs";
 import { reportingTable } from "./reporting-schema.mjs";
+import { recoveryTables } from "./recovery-schema.mjs";
 export function openDatabase(path) {
   const db = new DatabaseSync(path);
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -65,6 +66,7 @@ export function openDatabase(path) {
     transaction(db, () => db.exec(accountTables));
   db.exec(sqliteAppearanceTable);
   db.exec(reportingTable.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"));
+  db.exec(recoveryTables);
   return db;
 }
 export function transaction(db, fn) {

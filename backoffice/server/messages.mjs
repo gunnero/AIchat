@@ -1,5 +1,62 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Fortsæt": "Continue",
+  "Dine gendannelseskoder": "Your recovery codes",
+  "Gem dine gendannelseskoder": "Save your recovery codes",
+  "Hver kode kan bruges én gang. Gem dem i din adgangskodeboks eller et sikkert sted væk fra din telefon. De vises kun nu.":
+    "Each code can be used once. Keep them in your password manager or somewhere safe away from your phone. They are shown only now.",
+  "Download koder": "Download codes",
+  "Jeg har gemt koderne et sikkert sted.":
+    "I have saved the codes somewhere safe.",
+  Gendannelseskoder: "Recovery codes",
+  "Brug en gemt kode, hvis du mister adgangen til din authenticator.":
+    "Use a saved code if you lose access to your authenticator.",
+  "Ubrugte koder": "Unused codes",
+  "Du har ingen gendannelseskoder. Opret og gem et sæt nu.":
+    "You have no recovery codes. Create and save a set now.",
+  "Opret nye gendannelseskoder": "Create new recovery codes",
+  "Nye koder erstatter alle dine gamle koder og afbryder igangværende gendannelse.":
+    "New codes replace all your old codes and cancel recovery already in progress.",
+  "Opret koder": "Create codes",
+  "Gendan adgang til din konto": "Recover access to your account",
+  "Få et personligt link til at nulstille din adgangskode eller tilknytte en ny authenticator.":
+    "Get a personal link to reset your password or connect a new authenticator.",
+  "Send gendannelseslink": "Send recovery link",
+  "Hvis kontoen kan gendannes, modtager du en e-mail med et link. Tjek også spam. Linket udløber efter 30 minutter.":
+    "If the account is eligible for recovery, you will receive an email with a link. Check your junk folder too. The link expires after 30 minutes.",
+  "Bekræft din adgang, før du ændrer dine loginoplysninger.":
+    "Verify your access before changing your sign-in details.",
+  "Har du stadig din authenticator? Vælg en ny adgangskode og indtast en ny kode fra appen.":
+    "Still have your authenticator? Choose a new password and enter a fresh code from the app.",
+  "Gem ny adgangskode": "Save new password",
+  "Jeg har mistet min authenticator": "I have lost my authenticator",
+  "Brug din adgangskode og én gemt gendannelseskode. Du skal derefter tilknytte en ny authenticator.":
+    "Use your password and one saved recovery code. You will then need to connect a new authenticator.",
+  "Personlig supportkode": "Personal support code",
+  Gendannelseskode: "Recovery code",
+  "Bekræft og fortsæt": "Verify and continue",
+  "Mangler du også dine gemte koder? Kontakt support for bekræftet hjælp. En Admin kan ikke logge ind som dig.":
+    "Lost your saved codes too? Contact support for verified assistance. An Admin cannot sign in as you.",
+  "Brug en gendannelseskode": "Use a recovery code",
+  "Jeg har fået en personlig supportkode":
+    "I was given a personal support code",
+  "Scan QR-koden med din nye authenticator. Vælg derefter en ny adgangskode og bekræft med en kode fra den nye app.":
+    "Scan the QR code with your new authenticator. Then choose a new password and confirm with a code from the new app.",
+  "Fuldfør gendannelse": "Complete recovery",
+  "Din konto er gendannet. Alle tidligere login er afsluttet. Log ind med din adgangskode og en ny authenticator-kode.":
+    "Your account has been recovered. All previous sign-ins have been revoked. Sign in with your password and a fresh authenticator code.",
+  "Tilbage til login": "Back to sign in",
+  "Gentag ny adgangskode": "Repeat new password",
+  "Adgangskoderne er ikke ens.": "The passwords do not match.",
+  "Glemt adgangskode eller mistet authenticator?":
+    "Forgot your password or lost your authenticator?",
+  "Gendannelsen er udløbet. Bed om et nyt link.":
+    "Recovery has expired. Request a new link.",
+  "Linket er ugyldigt eller udløbet. Bed om et nyt link.":
+    "The link is invalid or expired. Request a new link.",
+  "Oplysningerne blev ikke godkendt. Prøv igen.":
+    "The details could not be verified. Try again.",
+
   Administration: "Administration",
   Administrationsmenu: "Administration menu",
   Menu: "Menu",

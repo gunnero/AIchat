@@ -58,3 +58,29 @@ export function localMailer(
     }
   };
 }
+
+export function recoveryMessage({ email, locale, url }) {
+  const da = locale === "da";
+  return {
+    to: email,
+    subject: da
+      ? "Gendan din konto · AI Kundetypeassistent"
+      : "Recover your account · AI Kundetypeassistent",
+    text: da
+      ? `Du har bedt om at gendanne din konto.\n\n${url}\n\nLinket udløber efter 30 minutter og kan kun fuldføre én gendannelse. Du skal også bruge din authenticator eller din adgangskode og en gendannelseskode. Hvis du ikke har bedt om dette, skal du ignorere beskeden. Dine loginoplysninger ændres ikke, før gendannelsen er bekræftet.\n\nDel aldrig linket eller dine koder med andre.\nAI Kundetypeassistent`
+      : `You requested account recovery.\n\n${url}\n\nThis link expires after 30 minutes and can complete only one recovery. You also need your authenticator, or your password and a recovery code. If you did not request this, ignore this message. Your sign-in details do not change until recovery is verified.\n\nNever share this link or your codes.\nAI Kundetypeassistent`,
+  };
+}
+export function securityNotice({ email, locale, kind, url }) {
+  const da = locale === "da",
+    factor = kind === "authenticator";
+  return {
+    to: email,
+    subject: da
+      ? "Sikkerhedsændring · AI Kundetypeassistent"
+      : "Security change · AI Kundetypeassistent",
+    text: da
+      ? `Din ${factor ? "authenticator og adgangskode er" : "adgangskode er"} blevet ændret gennem kontogendannelse. Alle tidligere login er afsluttet.\n\nHvis det ikke var dig, skal du kontakte support straks.\n\n${url}\nAI Kundetypeassistent`
+      : `Your ${factor ? "authenticator and password were" : "password was"} changed through account recovery. All previous sign-ins have been revoked.\n\nIf this was not you, contact support immediately.\n\n${url}\nAI Kundetypeassistent`,
+  };
+}

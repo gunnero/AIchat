@@ -1,6 +1,6 @@
 # Automated backups and monitoring
 
-This runbook covers the current Node 24.22 / PostgreSQL 18 / schema 8 application on jig. It supersedes historical SQLite backup instructions. Related work: [AK-049](https://github.com/gunnero/AIchat/issues/50), [AK-050](https://github.com/gunnero/AIchat/issues/51), [AK-055](https://github.com/gunnero/AIchat/issues/56).
+This runbook covers the current Node 24.22 / PostgreSQL 18 / schema 9 application on jig. It supersedes historical SQLite backup instructions. Related work: [AK-049](https://github.com/gunnero/AIchat/issues/50), [AK-050](https://github.com/gunnero/AIchat/issues/51), [AK-055](https://github.com/gunnero/AIchat/issues/56).
 
 See [verified release and deployment evidence](operations-deployment.md).
 
@@ -65,7 +65,7 @@ These status files are operational metadata only. Do not dump application enviro
      node server/restore.mjs /private/recovery/database /private/recovery/latest/deletions.jsonl
    ```
 
-   It verifies the inner checksums, requires an empty target, restores schema/data, merges the DB deletion ledger with both journals, deletes tombstoned conversations/messages and revokes all old login/setup/registration sessions. It writes the merged journal as `deletions.jsonl.replayed`. Failure at any step keeps recovery offline.
+   It verifies the inner checksums, requires an empty target, restores schema/data, merges the DB deletion ledger with both journals, deletes tombstoned conversations/messages and revokes all old login/setup/registration sessions. For schema 9, it also removes all recovery codes and email/support/restricted-session grants, preventing used factors from reappearing; users must generate fresh codes after restoration. It writes the merged journal as `deletions.jsonl.replayed`. Failure at any step keeps recovery offline.
 6. Verify the matching vault, required schema/release compatibility, enrolled MFA, protected Admin rules, counts and deletion replay through approved operator checks without exposing private content. Install the archive's matching vault and the generated merged journal with runtime ownership/0600 permissions. Recreate the scoped service/private environment from the operator configuration checkpoint and reviewed deployment documentation. The database archive is not an image of all OS, Apache, mail or server configuration.
 7. Switch only the scoped application connection/release, preserving post-snapshot writes or applying the agreed reconciliation. Validate private role permissions, HTTPS health, sign-in and fresh backups before restoring traffic. Never automatically replace live PostgreSQL with a drill database or a stale snapshot.
 
@@ -78,3 +78,5 @@ Review/push the exact commit and require all matching CI checks before deploymen
 For code recovery, switch only to compatible code and restart the scoped app; preserve PostgreSQL writes. To stop operational scheduling, disable the four `ai-kundetype-*.timer` units, stop only their running job instances, and preserve encrypted archives, the recovery identity and current deletion records. An in-flight cancelled job may leave a `.partial` file or private `/run` staging directory; remove only verified inactive job artifacts after checking active workers. Don't remove the disk mount, live state or database role as an automatic rollback. Review the scoped checkpoint before reverting HBA/ident rules; validate and reload the dedicated cluster without broad restarts. Existing application connections/privileges and unrelated vhosts are never intentionally changed.
 
 Remaining handover items: independent off-server encrypted copies and recovery exercise, external whole-host outage notification, recovery-key custody, legal retention/deletion reconciliation, measured full-dataset recovery time, privacy incident ownership and customer support arrangements. Live AI streaming/usage/spend monitoring belongs to its later runtime release.
+
+Account password/MFA recovery and verified operator assistance are documented in [account recovery](account-recovery.md). Never use a database rewind to reset a single account.

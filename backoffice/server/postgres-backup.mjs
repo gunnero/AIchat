@@ -20,7 +20,7 @@ async function schemaVersion(databaseUrl) {
     const version = (
       await db.query("SELECT max(version) AS v FROM schema_version")
     ).rows[0].v;
-    if (![3, 4, 5, 6, 7, 8].includes(version))
+    if (![3, 4, 5, 6, 7, 8, 9].includes(version))
       throw new Error("Unsupported backup schema");
     return version;
   } finally {
@@ -89,7 +89,7 @@ export async function restorePostgres({ databaseUrl, backup, journal }) {
   const manifest = JSON.parse(
     await readFile(join(backup, "manifest.json"), "utf8"),
   );
-  if (![3, 4, 5, 6, 7, 8].includes(manifest.schema))
+  if (![3, 4, 5, 6, 7, 8, 9].includes(manifest.schema))
     throw new Error("Unsupported backup");
   for (const name of ["database.dump", "vault.key", "deletions.jsonl"])
     if (manifest.files[name] !== checksum(await readFile(join(backup, name))))
@@ -142,6 +142,13 @@ export async function restorePostgres({ databaseUrl, backup, journal }) {
       await db.query("DELETE FROM sessions");
       await db.query("DELETE FROM setup_sessions");
       await db.query("DELETE FROM registrations");
+      if (manifest.schema >= 9) {
+        // A restore cannot reintroduce one-use factors consumed after its snapshot.
+        await db.query("DELETE FROM recovery_sessions");
+        await db.query("DELETE FROM recovery_requests");
+        await db.query("DELETE FROM recovery_codes");
+        await db.query("DELETE FROM recovery_support");
+      }
       if (
         (
           await db.query(

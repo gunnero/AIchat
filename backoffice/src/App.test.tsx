@@ -925,3 +925,39 @@ test.each(["en", "da"] as const)(
     ]);
   },
 );
+
+test("email recovery fragments are removed before private account loading and cleared on pagehide", async () => {
+  history.replaceState(null, "", "/#recover=" + "x".repeat(43));
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", {
+      name: t("Gendan adgang til din konto"),
+    }),
+  ).toBeVisible();
+  expect(location.hash).toBe("");
+  expect(mocked).not.toHaveBeenCalled();
+  act(() => window.dispatchEvent(new Event("pagehide")));
+  expect(
+    screen.queryByRole("heading", { name: t("Gendan adgang til din konto") }),
+  ).not.toBeInTheDocument();
+});
+
+test("a recovery link opened in the current tab unmounts the private workspace", async () => {
+  render(<App />);
+  expect(
+    await screen.findByRole("heading", { level: 1, name: t("Overblik") }),
+  ).toBeVisible();
+  act(() => {
+    history.replaceState(null, "", "/backoffice/#recover=" + "x".repeat(43));
+    window.dispatchEvent(new Event("hashchange"));
+  });
+  expect(
+    await screen.findByRole("heading", {
+      name: t("Gendan adgang til din konto"),
+    }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { level: 1, name: t("Overblik") }),
+  ).not.toBeInTheDocument();
+  expect(location.hash).toBe("");
+});
