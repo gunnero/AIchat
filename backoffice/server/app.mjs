@@ -23,7 +23,6 @@ import { translate } from "./messages.mjs";
 import { installCustomer } from "./customer.mjs";
 import { checkOpenAI } from "./provider.mjs";
 const P = "/backoffice/api",
-  SID = "bo_session",
   SETUP = "bo_setup";
 const text = (max) => z.string().trim().min(1).max(max);
 const email = z
@@ -101,6 +100,7 @@ export async function buildServer({
     (!secureCookies && origin !== localOrigin)
   )
     throw new Error("Invalid service origin/cookie configuration");
+  const SID = secureCookies ? "__Host-ai_session" : "ai_session_local";
   const app = Fastify({
     logger: false,
     rewriteUrl: (r) =>
@@ -246,7 +246,11 @@ export async function buildServer({
       if (sid)
         await db.prepare("DELETE FROM sessions WHERE hash=?").run(digest(sid));
       reply.clearCookie(SID, cookieOptions);
-      reply.clearCookie(SID, { path: "/backoffice" });
+      reply.clearCookie("bo_session", {
+        ...cookieOptions,
+        path: "/backoffice",
+      });
+      reply.clearCookie("bo_session", cookieOptions);
       fail(401, "Log ind for at fortsætte.");
     }
     const common = [
@@ -275,9 +279,11 @@ export async function buildServer({
       !equal(r.headers["x-csrf-token"], csrfFor(vaultKey, sid))
     )
       fail(403, "Anmodningen blev afvist. Genindlæs siden.");
-    await db
-      .prepare("UPDATE sessions SET seen=? WHERE hash=?")
-      .run(clock(), session.hash);
+    // Background membership checks must not keep an unattended session alive.
+    if (!(r.method === "GET" && path === "/api/customer/projects"))
+      await db
+        .prepare("UPDATE sessions SET seen=? WHERE hash=?")
+        .run(clock(), session.hash);
   });
   const customer = customerDatabase
     ? installCustomer(app, {
@@ -536,7 +542,11 @@ export async function buildServer({
         await audit(admin.id, "admin.login", admin.id);
       });
       reply.setCookie(SID, sid, cookieOptions);
-      reply.clearCookie(SID, { path: "/backoffice" });
+      reply.clearCookie("bo_session", {
+        ...cookieOptions,
+        path: "/backoffice",
+      });
+      reply.clearCookie("bo_session", cookieOptions);
       return sessionDto(admin, sid);
     },
   );
@@ -545,7 +555,8 @@ export async function buildServer({
     await db.prepare("DELETE FROM sessions WHERE hash=?").run(r.session.hash);
     await audit(r.adminId, "admin.logout", r.adminId);
     reply.clearCookie(SID, cookieOptions);
-    reply.clearCookie(SID, { path: "/backoffice" });
+    reply.clearCookie("bo_session", { ...cookieOptions, path: "/backoffice" });
+    reply.clearCookie("bo_session", cookieOptions);
     return { ok: true };
   });
   app.post(
@@ -598,7 +609,11 @@ export async function buildServer({
         await audit(r.adminId, "admin.password_changed", r.adminId);
       });
       reply.clearCookie(SID, cookieOptions);
-      reply.clearCookie(SID, { path: "/backoffice" });
+      reply.clearCookie("bo_session", {
+        ...cookieOptions,
+        path: "/backoffice",
+      });
+      reply.clearCookie("bo_session", cookieOptions);
       return { ok: true };
     },
   );

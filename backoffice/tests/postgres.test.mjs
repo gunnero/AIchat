@@ -67,7 +67,7 @@ async function account(role = "customer", customer = null, protectedOwner = 0) {
     secret,
     password,
     headers: {
-      cookie: "bo_session=" + raw,
+      cookie: "__Host-ai_session=" + raw,
       origin,
       "content-type": "application/json",
       "x-csrf-token": csrfFor(key, raw),
@@ -482,7 +482,7 @@ pgtest(
     });
     assert.equal(signed.statusCode, 200, signed.body);
     const cookie = signed.cookies.find(
-      (c) => c.name === "bo_session" && c.value,
+      (c) => c.name === "__Host-ai_session" && c.value,
     );
     assert.equal(cookie.path, "/");
     assert.ok(cookie.httpOnly && cookie.secure);
@@ -812,5 +812,37 @@ pgtest(
         "Should not persist",
       ),
     );
+  },
+);
+pgtest(
+  "PostgreSQL: passive membership polling does not extend idle sessions, while deliberate history access does",
+  async () => {
+    const { a, p } = fixtures,
+      seen = Date.now() - 25 * 60 * 1000;
+    await maintenance(() =>
+      q("UPDATE sessions SET seen=$1 WHERE hash=$2", [seen, digest(a.raw)]),
+    );
+    assert.equal((await req(a, "/api/customer/projects")).statusCode, 200);
+    await maintenance(async () =>
+      assert.equal(
+        (await q("SELECT seen FROM sessions WHERE hash=$1", [digest(a.raw)]))[0]
+          .seen,
+        seen,
+      ),
+    );
+    assert.equal((await req(a, url(p))).statusCode, 200);
+    await maintenance(async () =>
+      assert.ok(
+        (await q("SELECT seen FROM sessions WHERE hash=$1", [digest(a.raw)]))[0]
+          .seen > seen,
+      ),
+    );
+    await maintenance(() =>
+      q("UPDATE sessions SET seen=$1 WHERE hash=$2", [
+        Date.now() - 31 * 60 * 1000,
+        digest(a.raw),
+      ]),
+    );
+    assert.equal((await req(a, "/api/customer/projects")).statusCode, 401);
   },
 );

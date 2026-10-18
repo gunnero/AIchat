@@ -98,9 +98,9 @@ async function fixture(
     });
     assert.equal(r.statusCode, 200);
     cookie =
-      r.cookies.find((c) => c.name === "bo_session").name +
+      r.cookies.find((c) => c.name === "__Host-ai_session").name +
       "=" +
-      r.cookies.find((c) => c.name === "bo_session").value;
+      r.cookies.find((c) => c.name === "__Host-ai_session").value;
     csrf = r.json().csrf;
     return r;
   }
@@ -226,7 +226,7 @@ test("password plus fresh non-replayed MFA is required, cookies are HttpOnly/Sec
     401,
   );
   const login = await f.login();
-  const c = login.cookies.find((c) => c.name === "bo_session");
+  const c = login.cookies.find((c) => c.name === "__Host-ai_session");
   assert.ok(c.httpOnly && c.secure);
   assert.equal(c.sameSite, "Strict");
   assert.equal(
@@ -797,7 +797,8 @@ async function invitationFixture(t) {
     assert.equal(r.statusCode, 200);
     const headers = {
       cookie:
-        "bo_session=" + r.cookies.find((c) => c.name === "bo_session").value,
+        "__Host-ai_session=" +
+        r.cookies.find((c) => c.name === "__Host-ai_session").value,
       "x-csrf-token": r.json().csrf,
     };
     return { headers, session: r.json() };
