@@ -462,3 +462,108 @@ test.each(["en", "da"] as const)(
     ]);
   },
 );
+
+test.each(["en", "da"] as const)(
+  "saving a connection opens its new app project and one-time prompt import (%s)",
+  async (language) => {
+    setLanguage(language);
+    let created = false,
+      imported = false;
+    const project = {
+      id: "synthetic-project",
+      name: "Synthetic connection",
+      description: "",
+      connection_id: "synthetic-connection",
+      enabled: 1,
+    };
+    mocked.mockImplementation(async (path, method = "GET") => {
+      if (path === "/auth/session") return session;
+      if (method === "GET") {
+        if (path === "/projects") return created ? [project] : [];
+        if (path === "/prompts")
+          return imported
+            ? [
+                {
+                  id: "synthetic-version",
+                  project_id: project.id,
+                  prompt_id: "synthetic-prompt",
+                  name: "Synthetic connection",
+                  version: 1,
+                  source_ref: "",
+                  checksum: "synthetic",
+                },
+              ]
+            : [];
+        return [];
+      }
+      if (path === "/connections") {
+        created = true;
+        return {
+          id: "synthetic-connection",
+          projectId: project.id,
+          projectCreated: true,
+        };
+      }
+      if (path === `/projects/${project.id}/prompts/import`) {
+        imported = true;
+        return { projectId: project.id, imported: 1, skipped: 0 };
+      }
+      throw new Error("Unexpected setup mutation");
+    });
+    render(<App />);
+    const { user, dialog } = await openConnection();
+    await user.click(
+      within(dialog).getByRole("button", { name: t("Kontrollér og gem") }),
+    );
+    const importer = await screen.findByRole("dialog", {
+      name: t("Importér prompter"),
+    });
+    expect(screen.queryByLabelText(t("API-nøgle"))).not.toBeInTheDocument();
+    expect(within(importer).getByLabelText(t("Navn på prompt"))).toHaveValue(
+      project.name,
+    );
+    await user.type(
+      within(importer).getByLabelText(t("Instruktioner")),
+      "Synthetic instructions",
+    );
+    await user.click(
+      within(importer).getByRole("button", { name: t("Importér prompter") }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("v1")).toBeInTheDocument();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: t("Sprog") }),
+      language === "en" ? "da" : "en",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      t("Importeret: {imported}. Allerede tilføjet: {skipped}.")
+        .replace("{imported}", "1")
+        .replace("{skipped}", "0"),
+    );
+    expect(
+      mocked.mock.calls.filter(
+        ([path, method]) => path === "/connections" && method === "POST",
+      ),
+    ).toHaveLength(1);
+    expect(
+      mocked.mock.calls.filter(([path]) => path.endsWith("/prompts/import")),
+    ).toEqual([
+      [
+        `/projects/${project.id}/prompts/import`,
+        "POST",
+        {
+          prompts: [
+            {
+              name: project.name,
+              instructions: "Synthetic instructions",
+              sourceRef: "",
+            },
+          ],
+        },
+        session.csrf,
+      ],
+    ]);
+  },
+);

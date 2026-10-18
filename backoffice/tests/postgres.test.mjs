@@ -846,3 +846,173 @@ pgtest(
     assert.equal((await req(a, "/api/customer/projects")).statusCode, 401);
   },
 );
+
+pgtest(
+  "PostgreSQL: connection setup creates one linked app project and legacy opening is idempotent under concurrent requests",
+  async () => {
+    const { admin } = fixtures;
+    let checks = 0;
+    await app.close();
+    app = await buildServer({
+      database: openPostgres(uri("ai_control")),
+      customerDatabase: openPostgres(uri("ai_chat")),
+      vaultKey: key,
+      origin,
+      providerCheck: async () => {
+        checks++;
+        return "ok";
+      },
+      mailer: async () => {
+        throw new Error("No fixture email");
+      },
+    });
+    const connection = await req(admin, "/backoffice/api/connections", "POST", {
+      label: "Synthetic imported project",
+      projectRef: "proj_synthetic_import",
+      environment: "test",
+      apiKey: "sk-proj-synthetic-test-credential-never-sent-to-provider",
+    });
+    assert.equal(connection.statusCode, 200, connection.body);
+    const { id, projectId, projectCreated } = connection.json();
+    assert.equal(projectCreated, true);
+    assert.deepEqual(
+      await q("SELECT id,name,connection_id FROM projects WHERE id=$1", [
+        projectId,
+      ]),
+      [
+        {
+          id: projectId,
+          name: "Synthetic imported project",
+          connection_id: id,
+        },
+      ],
+    );
+    assert.equal(
+      (
+        await q("SELECT id FROM prompt_versions WHERE project_id=$1", [
+          projectId,
+        ])
+      ).length,
+      0,
+    );
+    const open = () =>
+      req(admin, `/backoffice/api/connections/${id}/project`, "POST", {});
+    assert.deepEqual((await open()).json(), {
+      projectId,
+      projectCreated: false,
+    });
+    await maintenance(() => q("DELETE FROM projects WHERE id=$1", [projectId]));
+    const results = await Promise.all([open(), open(), open()]);
+    assert.ok(results.every((r) => r.statusCode === 200));
+    assert.equal(new Set(results.map((r) => r.json().projectId)).size, 1);
+    assert.equal(results.filter((r) => r.json().projectCreated).length, 1);
+    const importResult = await req(
+      admin,
+      `/backoffice/api/projects/${results[0].json().projectId}/prompts/import`,
+      "POST",
+      {
+        projectRef: "proj_synthetic_import",
+        prompts: [
+          {
+            name: "Bound source",
+            instructions: "Synthetic source content",
+            sourceRef: "pmpt_synthetic v2",
+          },
+        ],
+      },
+    );
+    assert.equal(importResult.statusCode, 200, importResult.body);
+    assert.equal(importResult.json().imported, 1);
+    assert.equal(checks, 1);
+  },
+);
+
+pgtest(
+  "PostgreSQL: concurrent one-time imports preserve source, immutable versions, pinned histories and Admin/Customer boundaries",
+  async () => {
+    const { admin, main, a, p, other } = fixtures,
+      c = await create(a, p);
+    await save(a, p, c);
+    const route = `/backoffice/api/projects/${p.id}/prompts/import`;
+    const item = {
+      name: "Imported synthetic prompt",
+      instructions:
+        "  Original synthetic instructions\r\n<script>literal</script>\n",
+      sourceRef: "pmpt_synthetic v4",
+    };
+    const body = { prompts: [item] };
+    assert.equal((await req(a, route, "POST", body)).statusCode, 403);
+    assert.equal(
+      (await req({ headers: { origin } }, route, "POST", body)).statusCode,
+      401,
+    );
+    const missingCsrf = {
+      ...admin,
+      headers: { ...admin.headers, "x-csrf-token": "bad" },
+    };
+    assert.equal((await req(missingCsrf, route, "POST", body)).statusCode, 403);
+    const results = await Promise.all([
+      req(admin, route, "POST", body),
+      req(main, route, "POST", body),
+    ]);
+    assert.ok(results.every((r) => r.statusCode === 200));
+    assert.deepEqual(results.map((r) => r.json().imported).sort(), [0, 1]);
+    const [stored] = await q(
+      "SELECT * FROM prompt_versions WHERE project_id=$1 AND name=$2",
+      [p.id, item.name],
+    );
+    assert.equal(stored.version, 1);
+    assert.equal(stored.source_ref, item.sourceRef);
+    assert.equal(stored.checksum, digest(item.instructions));
+    assert.equal(
+      unseal(key, stored.instructions, "prompt:" + stored.id),
+      item.instructions,
+    );
+    assert.ok(!stored.instructions.includes("Original synthetic"));
+    assert.equal(
+      (
+        await q(
+          "SELECT version_id FROM assignments WHERE customer_id=$1 AND project_id=$2",
+          [a.customerId, p.id],
+        )
+      )[0].version_id,
+      p.v,
+    );
+    await save(a, p, c, "Existing pinned conversation still accepts messages");
+    assert.equal((await req(admin, url(p, c.id))).statusCode, 403);
+    assert.equal((await req(main, url(p, c.id))).statusCode, 403);
+    const conflict = await req(admin, route, "POST", {
+      prompts: [
+        { name: "Rollback me", instructions: "Synthetic" },
+        { ...item, instructions: "Different" },
+      ],
+    });
+    assert.equal(conflict.statusCode, 409);
+    assert.equal(
+      (await q("SELECT id FROM prompt_versions WHERE name='Rollback me'"))
+        .length,
+      0,
+    );
+    assert.equal(
+      (
+        await req(
+          admin,
+          `/backoffice/api/projects/${other.id}/prompts/import`,
+          "POST",
+          body,
+        )
+      ).json().imported,
+      1,
+    );
+    assert.equal(
+      (await req(admin, route, "POST", { ...body, projectRef: "proj_wrong" }))
+        .statusCode,
+      400,
+    );
+    assert.ok(
+      !(await req(admin, "/backoffice/api/audit")).body.includes(
+        item.instructions,
+      ),
+    );
+  },
+);

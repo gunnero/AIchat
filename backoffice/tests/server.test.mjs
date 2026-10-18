@@ -176,6 +176,8 @@ test("all customer, project, prompt, connection and audit reads/writes require a
     "/prompts",
     "/connections",
     "/connections/" + randomUUID() + "/rotate",
+    "/connections/" + randomUUID() + "/project",
+    "/projects/" + randomUUID() + "/prompts/import",
   ])
     assert.equal((await f.req(path, "POST", {})).statusCode, 401);
 });
@@ -435,7 +437,8 @@ test("invalid project IDs get specific bilingual guidance before any provider ch
           ? "Paste the project ID from OpenAI. It starts with proj_."
           : "Indsæt projektets ID fra OpenAI. Det starter med proj_.",
       );
-      if (projectRef !== "proj_") assert.ok(!response.body.includes(projectRef));
+      if (projectRef !== "proj_")
+        assert.ok(!response.body.includes(projectRef));
       assert.ok(!response.body.includes(fixtureKey));
     }
   }
@@ -1042,6 +1045,8 @@ test("Customer registration gives only its own assigned project metadata and can
     "/customers",
     "/projects",
     "/invitations/" + signed.session.id + "/resend",
+    "/connections/" + randomUUID() + "/project",
+    "/projects/" + projectId + "/prompts/import",
   ])
     assert.equal(
       (await f.req(path, "POST", {}, signed.headers)).statusCode,
@@ -1293,5 +1298,204 @@ test("expired invitation links cannot begin enrollment, and paused Admin session
   assert.equal(
     (await f.req("/register/begin", "POST", { token: raw })).statusCode,
     400,
+  );
+});
+
+test("a verified connection creates its linked empty project atomically and safely reuses legacy links", async (t) => {
+  let checks = 0;
+  const f = await fixture(t, {
+    providerCheck: async () => {
+      checks++;
+      return "ok";
+    },
+  });
+  await f.owner();
+  const original = await f.project("Test connection");
+  const id = await f.connection();
+  const db = f.app.db;
+  const linked = db
+    .prepare("SELECT * FROM projects WHERE connection_id=?")
+    .get(id);
+  assert.equal(linked.name, "Test connection (2)");
+  assert.equal(linked.enabled, 1);
+  assert.equal(
+    db.prepare("SELECT connection_id FROM projects WHERE id=?").get(original)
+      .connection_id,
+    null,
+  );
+  assert.equal(
+    db.prepare("SELECT count(*) AS n FROM prompt_versions").get().n,
+    0,
+  );
+  const open = () => f.req(`/connections/${id}/project`, "POST", {});
+  assert.deepEqual((await open()).json(), {
+    projectId: linked.id,
+    projectCreated: false,
+  });
+  assert.equal(
+    (
+      await f.req(
+        `/connections/${id}/project`,
+        "POST",
+        {},
+        { "x-csrf-token": "invalid" },
+      )
+    ).statusCode,
+    403,
+  );
+  db.prepare("DELETE FROM projects WHERE id=?").run(linked.id);
+  db.prepare("UPDATE connections SET enabled=0 WHERE id=?").run(id);
+  const results = await Promise.all([open(), open(), open()]);
+  assert.ok(results.every((r) => r.statusCode === 200));
+  assert.equal(new Set(results.map((r) => r.json().projectId)).size, 1);
+  assert.equal(results.filter((r) => r.json().projectCreated).length, 1);
+  const restored = db
+    .prepare("SELECT * FROM projects WHERE connection_id=?")
+    .get(id);
+  assert.equal(restored.enabled, 0);
+  assert.equal(checks, 1, "opening local project must not call provider");
+  assert.equal(
+    (await f.req(`/connections/${randomUUID()}/project`, "POST", {}))
+      .statusCode,
+    404,
+  );
+  db.exec(
+    "CREATE TRIGGER fail_project BEFORE INSERT ON projects BEGIN SELECT RAISE(ABORT,'Synthetic project failure'); END",
+  );
+  const failed = await f.req("/connections", "POST", {
+    label: "Rollback fixture",
+    projectRef: "proj_rollback",
+    environment: "test",
+    apiKey: fixtureKey,
+  });
+  assert.equal(failed.statusCode, 409);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM connections").get().n, 1);
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) AS n FROM audit WHERE action='connection.created'",
+      )
+      .get().n,
+    1,
+  );
+});
+
+test("rejected provider credentials create neither a connection nor a project", async (t) => {
+  const f = await fixture(t, { providerCheck: async () => "invalid" });
+  await f.owner();
+  const r = await f.req("/connections", "POST", {
+    label: "Rejected",
+    projectRef: "proj_rejected",
+    environment: "test",
+    apiKey: fixtureKey,
+  });
+  assert.equal(r.statusCode, 400);
+  assert.equal(
+    f.app.db.prepare("SELECT count(*) AS n FROM projects").get().n,
+    0,
+  );
+  assert.equal(
+    f.app.db.prepare("SELECT count(*) AS n FROM connections").get().n,
+    0,
+  );
+});
+
+test("one-time prompt imports preserve encrypted exact content and provenance, skip retries, and roll back conflicts", async (t) => {
+  const f = await fixture(t, {
+    providerCheck: async () => {
+      throw new Error("No provider calls during local import");
+    },
+  });
+  await f.owner();
+  const projectId = await f.project(),
+    other = await f.project("Other project"),
+    db = f.app.db;
+  const item = {
+    name: "Original prompt",
+    instructions:
+      "  Exact synthetic instructions\r\n<script>literal</script>\n",
+    sourceRef: "pmpt_synthetic v3",
+  };
+  const body = {
+    prompts: [item, { name: "Second", instructions: "Synthetic second" }],
+  };
+  const path = `/projects/${projectId}/prompts/import`;
+  assert.equal(
+    (await f.req(path, "POST", body, { "x-csrf-token": "" })).statusCode,
+    403,
+  );
+  assert.deepEqual((await f.req(path, "POST", body)).json(), {
+    projectId,
+    imported: 2,
+    skipped: 0,
+  });
+  const stored = db
+    .prepare("SELECT * FROM prompt_versions WHERE project_id=? AND name=?")
+    .get(projectId, item.name);
+  assert.equal(stored.version, 1);
+  assert.equal(stored.source_ref, item.sourceRef);
+  assert.equal(stored.checksum, digest(item.instructions));
+  assert.equal(
+    unseal(f.vaultKey, stored.instructions, "prompt:" + stored.id),
+    item.instructions,
+  );
+  assert.ok(!stored.instructions.includes("Exact synthetic"));
+  assert.ok(!(await f.req("/audit")).body.includes(item.instructions));
+  assert.deepEqual((await f.req(path, "POST", body)).json(), {
+    projectId,
+    imported: 0,
+    skipped: 2,
+  });
+  assert.equal(
+    (
+      await f.req(path, "POST", {
+        prompts: [
+          { name: "Must roll back", instructions: "Synthetic" },
+          { ...item, instructions: "Changed" },
+        ],
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) AS n FROM prompt_versions WHERE name='Must roll back'",
+      )
+      .get().n,
+    0,
+  );
+  const results = await Promise.all(
+    [1, 2].map(() => f.req(`/projects/${other}/prompts/import`, "POST", body)),
+  );
+  assert.deepEqual(results.map((r) => r.json().imported).sort(), [0, 2]);
+  assert.equal(
+    db.prepare("SELECT count(*) AS n FROM prompt_versions").get().n,
+    4,
+  );
+  for (const bad of [
+    { ...body, apiKey: fixtureKey },
+    { projectRef: "proj_wrong", ...body },
+    { prompts: [{ name: "ID only", sourceRef: "pmpt_synthetic" }] },
+    { prompts: [{ name: "Empty", instructions: "  " }] },
+    { prompts: [item, { ...item, name: "ORIGINAL PROMPT" }] },
+    { prompts: [{ name: "Too long", instructions: "x".repeat(48001) }] },
+  ])
+    assert.equal((await f.req(path, "POST", bad)).statusCode, 400);
+  assert.equal(
+    (
+      await f.req(path, "POST", {
+        prompts: Array.from({ length: 6 }, (_, i) => ({
+          name: String(i),
+          instructions: "x".repeat(48000),
+        })),
+      })
+    ).statusCode,
+    413,
+  );
+  assert.equal(
+    (await f.req(`/projects/${randomUUID()}/prompts/import`, "POST", body))
+      .statusCode,
+    404,
   );
 });

@@ -1,5 +1,47 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Importér fra en fil · valgfrit": "Import from a file · optional",
+  "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilføje instruktionerne.":
+    "Add a project key. We create the project so you can add the instructions.",
+  "Filen tilhører et andet OpenAI-projekt. Vælg det rigtige projekt.":
+    "This file belongs to a different OpenAI project. Choose the correct project.",
+  "En prompt med dette navn findes allerede. Åbn den for at oprette en ny version.":
+    "A prompt with this name already exists. Open it to create a new version.",
+  "Vælg en tekstfil eller importfil på højst 256 KB.":
+    "Choose a text or import file up to 256 KB.",
+  "Filen kunne ikke importeres. Brug en tekstfil med instruktioner eller appens JSON-importformat.":
+    "This file could not be imported. Use a text file containing instructions or the app's JSON import format.",
+  "Tilføj et navn og instruktionerne, før du importerer.":
+    "Add a name and the instructions before importing.",
+  "Tilføj instruktionerne én gang. Derefter kan du redigere dem her.":
+    "Add your instructions once. You can edit them here afterward.",
+  "Vælg en fil · valgfrit": "Choose a file · optional",
+  "Brug en tekstfil eller appens JSON-importformat. En API-nøgle kan ikke hente instruktionerne her.":
+    "Use a text file or the app's JSON import format. An API key cannot retrieve the instructions here.",
+  "Gennemse importen": "Review import",
+  "Gennemse instruktionerne, før du importerer.":
+    "Review the instructions before importing.",
+  "Indsæt tekst i stedet": "Paste text instead",
+  "Navn på prompt": "Prompt name",
+  "Kildereference · valgfrit": "Source reference · optional",
+  "Oprindeligt prompt-ID og version": "Original prompt ID and version",
+  "Importen opretter version 1. Kundernes nuværende tildelinger ændres ikke.":
+    "Import creates version 1. Customers' current assignments stay unchanged.",
+  "Importér prompter": "Import prompts",
+  "Projektet er oprettet. Tilføj nu instruktionerne.":
+    "Project created. Add the instructions next.",
+  "Importeret: {imported}. Allerede tilføjet: {skipped}.":
+    "Imported: {imported}. Already added: {skipped}.",
+  "Forbind OpenAI, tilføj instruktionerne og invitér din første kunde.":
+    "Connect OpenAI, add the instructions and invite your first customer.",
+  "Importér dine instruktioner": "Import your instructions",
+  "Åbn projekt": "Open project",
+  "Når forbindelsen gemmes, oprettes et projekt i appen. Derefter tilføjer du instruktionerne én gang. Kontrollen bekræfter ikke kreditbalance eller alle modelrettigheder.":
+    "Saving a connection creates an app project. Then add the instructions once. The check does not confirm credit balance or every model permission.",
+  "Importér godkendte instruktioner én gang, og administrér dem her. Nye versioner ændrer ikke eksisterende kundetildelinger.":
+    "Import approved instructions once, then manage them here. New versions leave existing customer assignments unchanged.",
+  "Vi opretter også et projekt i appen med dette navn.":
+    "We also create an app project with this name.",
   "Dette er et nøgle-ID. Indsæt projektets ID, som starter med proj_.":
     "This is a key ID. Paste the project ID starting with proj_.",
   "Indsæt projektets ID fra OpenAI. Det starter med proj_.":

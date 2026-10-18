@@ -1,6 +1,7 @@
 import { api, ApiError, type Session } from "./client";
 import { CustomerWorkspace } from "./CustomerWorkspace";
 import { SecurityConfirmation } from "./SecurityConfirmation";
+import { PromptImportForm } from "./PromptImportForm";
 import { t, getLanguage, useLanguage, LanguagePicker } from "./i18n";
 import {
   useEffect,
@@ -174,7 +175,9 @@ export function App() {
     [loading, setLoading] = useState(true),
     [tab, setTab] = useState("overview");
   const [data, setData] = useState<Data>(empty),
-    [notice, setNotice] = useState(""),
+    [notice, setNotice] = useState<
+      string | { imported: number; skipped: number }
+    >(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<{
@@ -255,8 +258,9 @@ export function App() {
         api<Audit[]>("/audit"),
         api<Account[]>("/staff"),
       ]);
-    if (epoch === authEpoch.current)
-      setData({ customers, connections, projects, prompts, audit, staff });
+    const next = { customers, connections, projects, prompts, audit, staff };
+    if (epoch === authEpoch.current) setData(next);
+    return next;
   }
   useEffect(() => {
     const epoch = authEpoch.current;
@@ -287,6 +291,10 @@ export function App() {
         message?: string;
         messageKey?: string;
         invitation?: string;
+        projectId?: string;
+        projectCreated?: boolean;
+        imported?: number;
+        skipped?: number;
       };
       let result: Result;
       try {
@@ -305,7 +313,7 @@ export function App() {
         result = await api<Result>(path, method, body, session?.csrf);
       }
       if (!current()) return false;
-      await reload(epoch);
+      const next = await reload(epoch);
       if (!current()) return false;
       setNotice(
         result.invitation === "failed"
@@ -319,6 +327,20 @@ export function App() {
             : result?.messageKey || result?.message || message,
       );
       setModal(null);
+      if (
+        result.projectId &&
+        (path === "/connections" ||
+          /^\/connections\/[^/]+\/project$/.test(path))
+      ) {
+        navigate("projects");
+        const project = next.projects.find((p) => p.id === result.projectId);
+        if (result.projectCreated && project) {
+          setNotice(t("Projektet er oprettet. Tilføj nu instruktionerne."));
+          setModal({ type: "prompt-import", value: project });
+        }
+      }
+      if (result.imported !== undefined)
+        setNotice({ imported: result.imported, skipped: result.skipped ?? 0 });
       return true;
     } catch (e) {
       if (!current()) return false;
@@ -482,7 +504,7 @@ export function App() {
                       )
                     : tab === "connections"
                       ? t(
-                          "Tilføj en projektnøgle, kontrollér forbindelsen, og vælg den i dit app-projekt.",
+                          "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilføje instruktionerne.",
                         )
                       : tab === "staff"
                         ? t(
@@ -500,7 +522,11 @@ export function App() {
           )}
           {notice && (
             <p role="status" className="notice">
-              {t(notice)}
+              {typeof notice === "string"
+                ? t(notice)
+                : t("Importeret: {imported}. Allerede tilføjet: {skipped}.")
+                    .replace("{imported}", String(notice.imported))
+                    .replace("{skipped}", String(notice.skipped))}
             </p>
           )}
           {tab === "overview" && (
@@ -543,7 +569,7 @@ export function App() {
                 <h3>{t("Kom godt i gang")}</h3>
                 <p>
                   {t(
-                    "Forbind OpenAI, opret et projekt og tilføj din første kunde.",
+                    "Forbind OpenAI, tilføj instruktionerne og invitér din første kunde.",
                   )}{" "}
                 </p>
                 <div className="steps">
@@ -560,7 +586,7 @@ export function App() {
                   <button onClick={() => navigate("projects")}>
                     <b>02</b>
                     <span>
-                      {t("Opret projekt og prompt")}{" "}
+                      {t("Importér dine instruktioner")}{" "}
                       <small>
                         {t(
                           "Gem en gennemgået version af instruktionerne.",
@@ -712,6 +738,15 @@ export function App() {
                     <td>
                       <div className="row-actions">
                         <button
+                          disabled={busy}
+                          className="text-button"
+                          onClick={() =>
+                            mutate("/connections/" + c.id + "/project", {})
+                          }
+                        >
+                          {t("Åbn projekt")}
+                        </button>
+                        <button
                           disabled={busy || !c.enabled}
                           className="text-button"
                           onClick={() =>
@@ -754,7 +789,7 @@ export function App() {
               </Table>
               <p className="footnote">
                 {t(
-                  "Kontrollen afprøver adgang til OpenAI-modellisten. Den bekræfter ikke alle modelrettigheder, kreditbalance eller adgang til et promptbibliotek. Prompter tilføjes særskilt under projekter.",
+                  "Når forbindelsen gemmes, oprettes et projekt i appen. Derefter tilføjer du instruktionerne én gang. Kontrollen bekræfter ikke kreditbalance eller alle modelrettigheder.",
                 )}{" "}
               </p>
             </>
@@ -800,6 +835,14 @@ export function App() {
                       <h4>{t("Promptversioner")}</h4>
                       <button
                         className="text-button"
+                        onClick={() =>
+                          setModal({ type: "prompt-import", value: p })
+                        }
+                      >
+                        {t("Importér prompter")}
+                      </button>
+                      <button
+                        className="text-button"
                         onClick={() => setModal({ type: "prompt", value: p })}
                       >
                         <PlusIcon size={17} />
@@ -839,7 +882,7 @@ export function App() {
               </div>
               <p className="footnote">
                 {t(
-                  "Kopiér godkendte instruktioner fra OpenAI Platform, eller skriv dem her. Promptindhold hentes ikke automatisk via en API-nøgle. Nye versioner ændrer ikke eksisterende kundetildelinger.",
+                  "Importér godkendte instruktioner én gang, og administrér dem her. Nye versioner ændrer ikke eksisterende kundetildelinger.",
                 )}{" "}
               </p>
             </>
@@ -943,9 +986,11 @@ export function App() {
                         ? t("Tilføj API-forbindelse")
                         : modal.type === "rotate"
                           ? t("Udskift API-nøgle")
-                          : modal.type === "password"
-                            ? t("Skift adgangskode")
-                            : t("Prompt og instruktioner")
+                          : modal.type === "prompt-import"
+                            ? t("Importér prompter")
+                            : modal.type === "password"
+                              ? t("Skift adgangskode")
+                              : t("Prompt og instruktioner")
                 : ""
           }
           onClose={() => {
@@ -1039,6 +1084,24 @@ export function App() {
                   }
                   busy={busy}
                   save={(v) => mutate("/prompts", v)}
+                />
+              )}
+              {modal.type === "prompt-import" && (
+                <PromptImportForm
+                  key={modal.value!.id}
+                  project={modal.value as Project}
+                  projectRef={
+                    data.connections.find(
+                      (c) => c.id === (modal.value as Project).connection_id,
+                    )?.project_ref
+                  }
+                  busy={busy}
+                  save={(v) =>
+                    mutate(
+                      "/projects/" + modal.value!.id + "/prompts/import",
+                      v,
+                    )
+                  }
                 />
               )}
               {modal.type === "password" && (
@@ -1358,7 +1421,8 @@ function Dialog({
     );
     Array.from(fields || [])
       .find((field) => !field.closest("[hidden]"))
-      ?.focus();
+      ?.focus({ preventScroll: true });
+    if (ref.current) ref.current.scrollTop = 0;
   }, [title]);
   useEffect(() => {
     const el = ref.current!;
@@ -1754,6 +1818,9 @@ function ConnectionForm({
               autoFocus
             />
           </label>
+          <p className="footnote">
+            {t("Vi opretter også et projekt i appen med dette navn.")}
+          </p>
           <label>
             {t("OpenAI-projekt-ID")}{" "}
             <input

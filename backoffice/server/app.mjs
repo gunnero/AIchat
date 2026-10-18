@@ -22,6 +22,7 @@ import { installAccounts, username } from "./accounts.mjs";
 import { translate } from "./messages.mjs";
 import { installCustomer } from "./customer.mjs";
 import { checkOpenAI } from "./provider.mjs";
+import { promptImport, MAX_IMPORT_BYTES } from "./prompt-bundle.mjs";
 const P = "/backoffice/api",
   SETUP = "bo_setup";
 const text = (max) => z.string().trim().min(1).max(max);
@@ -772,6 +773,39 @@ export async function buildServer({
   );
   const connectionMetadata =
     "id,label,project_ref,environment,suffix,revision,enabled,status,last_checked,created_at,updated_at";
+  // Called only inside the existing serialized control transaction. Reusing a
+  // linked project never changes its name, prompts, assignments or connection.
+  async function ensureConnectionProject(connectionId, adminId) {
+    const connection = await db
+      .prepare("SELECT id,label,enabled FROM connections WHERE id=?")
+      .get(connectionId);
+    if (!connection) fail(404, "Forbindelsen findes ikke.");
+    const existing = await db
+      .prepare(
+        "SELECT id FROM projects WHERE connection_id=? ORDER BY created_at,id LIMIT 1",
+      )
+      .get(connectionId);
+    if (existing) return { projectId: existing.id, projectCreated: false };
+    let name = connection.label,
+      suffix = 1;
+    while (
+      await db
+        .prepare("SELECT id FROM projects WHERE name=? COLLATE NOCASE")
+        .get(name)
+    ) {
+      const ending = ` (${++suffix})`;
+      name =
+        connection.label
+          .slice(0, 80 - ending.length)
+          .replace(/[\uD800-\uDBFF]$/, "") + ending;
+    }
+    const id = randomUUID();
+    await db
+      .prepare("INSERT INTO projects VALUES(?,?,?,?,?,?,?)")
+      .run(id, name, "", connectionId, connection.enabled, stamp(), stamp());
+    await audit(adminId, "project.created", id);
+    return { projectId: id, projectCreated: true };
+  }
   app.get(
     P + "/connections",
     async () =>
@@ -789,7 +823,7 @@ export async function buildServer({
     await stillAuthorized(r);
     fresh(r);
     if (result !== "ok") fail(400, connectionError(result));
-    await transaction(db, async () => {
+    const project = await transaction(db, async () => {
       if (r.session) await stillAuthorized(r);
       await db
         .prepare("INSERT INTO connections VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
@@ -808,8 +842,17 @@ export async function buildServer({
           stamp(),
         );
       await audit(r.adminId, "connection.created", id);
+      return ensureConnectionProject(id, r.adminId);
     });
-    return { id };
+    return { id, ...project };
+  });
+  app.post(P + "/connections/:id/project", async (r) => {
+    z.object({}).strict().parse(r.body);
+    const id = z.uuid().parse(r.params.id);
+    return transaction(db, async () => {
+      await stillAuthorized(r);
+      return ensureConnectionProject(id, r.adminId);
+    });
   });
   app.put(P + "/connections/:id", async (r) => {
     fresh(r);
@@ -996,6 +1039,68 @@ export async function buildServer({
           "SELECT id,project_id,prompt_id,name,version,source_ref,checksum,created_at FROM prompt_versions ORDER BY name,version DESC",
         )
         .all(),
+  );
+  app.post(
+    P + "/projects/:id/prompts/import",
+    { bodyLimit: MAX_IMPORT_BYTES },
+    async (r) => {
+      const projectId = z.uuid().parse(r.params.id),
+        v = promptImport.parse(r.body);
+      return transaction(db, async () => {
+        await stillAuthorized(r);
+        const project = await db
+          .prepare(
+            "SELECT projects.id,connections.project_ref FROM projects LEFT JOIN connections ON connections.id=projects.connection_id WHERE projects.id=?",
+          )
+          .get(projectId);
+        if (!project) fail(404, "Projektet findes ikke.");
+        if (v.projectRef && v.projectRef !== project.project_ref)
+          fail(
+            400,
+            "Filen tilhører et andet OpenAI-projekt. Vælg det rigtige projekt.",
+          );
+        let imported = 0,
+          skipped = 0;
+        for (const item of v.prompts) {
+          const checksum = digest(item.instructions);
+          const existing = await db
+            .prepare(
+              "SELECT id,prompt_id,checksum,source_ref FROM prompt_versions WHERE project_id=? AND name=? COLLATE NOCASE ORDER BY version DESC LIMIT 1",
+            )
+            .get(projectId, item.name);
+          if (existing) {
+            if (
+              existing.checksum === checksum &&
+              existing.source_ref === item.sourceRef
+            ) {
+              skipped++;
+              continue;
+            }
+            fail(
+              409,
+              "En prompt med dette navn findes allerede. Åbn den for at oprette en ny version.",
+            );
+          }
+          const id = randomUUID();
+          await db
+            .prepare("INSERT INTO prompt_versions VALUES(?,?,?,?,?,?,?,?,?)")
+            .run(
+              id,
+              projectId,
+              randomUUID(),
+              item.name,
+              1,
+              seal(vaultKey, item.instructions, "prompt:" + id),
+              item.sourceRef,
+              checksum,
+              stamp(),
+            );
+          await audit(r.adminId, "prompt.version_created", id);
+          imported++;
+        }
+        return { projectId, imported, skipped };
+      });
+    },
   );
   app.post(P + "/prompts", async (r) => {
     const v = z

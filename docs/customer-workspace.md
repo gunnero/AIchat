@@ -16,6 +16,10 @@ Titles and bodies use AES-256-GCM with record/customer/project context and the e
 
 Administrator confirmation is part of the action being performed. There is no separate “Verify access” header button. If a protected change needs fresh MFA, the server returns `reauth_required` and the app asks for a code, keeps the original form mounted and continues that exact request once after successful confirmation. Cancel returns to the retained form. Pending requests stay in memory only and are discarded on session expiry, page departure, unmount or sign-out. Incorrect/replayed codes (`invalid_otp`) permit a new code; an expired session returns to sign-in. Other permission errors and uncertain network failures do not trigger automatic mutation retries. The ten-minute server freshness rule, MFA replay protection and CSRF checks are retained.
 
+## Projects and instructions
+
+A verified API connection now creates its linked app project, followed by a one-time instruction import. Paste instructions or review a text/app-format JSON file, then manage immutable versions in the app. Legacy connections have an idempotent **Open project** action. Existing customer assignments and conversations remain pinned. See [the import format and operating rules](prompt-import.md). This does not automatically download or synchronize an OpenAI prompt library.
+
 ## API
 
 All mutations require the exact application Origin, JSON and session CSRF token. Unknown/unauthorized conversation IDs return the same 404. Routes are under `/api/customer`; authentication aliases `/api/auth/{login,session,logout,password,reauth}` retain the existing backoffice endpoints.

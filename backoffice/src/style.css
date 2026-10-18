@@ -987,3 +987,36 @@ input[readonly] {
   flex-wrap: wrap;
   gap: 12px;
 }
+.import-preview {
+  min-width: 0;
+}
+.file-import {
+  margin-top: 12px;
+}
+.file-import summary {
+  cursor: pointer;
+}
+.file-import label {
+  margin-top: 12px;
+}
+.import-preview details {
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.import-preview summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.import-preview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+  font: inherit;
+}
+.prompt-heading {
+  flex-wrap: wrap;
+  gap: 8px;
+}
