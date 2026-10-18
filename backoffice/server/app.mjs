@@ -664,6 +664,7 @@ export async function buildServer({
           .get(id);
         if (!previous) fail(404, "Projektet findes ikke.");
         if (
+          previous.connection_id !== null &&
           previous.connection_id !== v.connectionId &&
           db
             .prepare(

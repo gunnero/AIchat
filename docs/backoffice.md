@@ -2,6 +2,8 @@
 
 18 October 2026. The administrator application in `backoffice/` is a separate service from the synthetic customer demo in `app/`. The approved monochrome design is retained. No existing demo fixtures are migrated into the real database.
 
+Deployed at [https://ai.igurl.dk/backoffice/](https://ai.igurl.dk/backoffice/) from `fa9fbc0`, with first-owner enrollment handed to the owner through the private setup bridge. See [verified deployment and rollback](deployment-jig.md#administrator-service-deployment--18-october-2026). The runtime starts with no administrator or example customers/keys.
+
 ## This release
 
 - Password plus TOTP authenticator sign-in; hashed, revocable server sessions, inactivity and absolute expiry, origin/CSRF checks, persistent failed-login limits and fresh MFA for credential changes.

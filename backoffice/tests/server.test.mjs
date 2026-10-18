@@ -481,11 +481,40 @@ test("new immutable prompt versions preserve assignments and prevent moving conf
   const a = await f.project("Immutable"),
     v1 = await f.prompt(a);
   const p = (await f.req("/prompts")).json()[0];
+  assert.equal(
+    (
+      await f.req("/customers", "POST", {
+        name: "Pinned fixture",
+        email: "pinned@example.test",
+        status: "pending",
+        expires: null,
+        allowance: 300,
+        assignments: [{ projectId: a, versionId: v1 }],
+      })
+    ).statusCode,
+    200,
+  );
   const v2 = await f.prompt(a, p.prompt_id);
   assert.notEqual(v1, v2);
   assert.deepEqual(
     (await f.req("/prompts")).json().map((p) => p.version),
     [2, 1],
+  );
+  assert.equal(
+    (await f.req("/customers")).json()[0].assignments[0].versionId,
+    v1,
+  );
+  // Projects can be prepared before the owner adds their first key.
+  assert.equal(
+    (
+      await f.req("/projects/" + a, "PUT", {
+        name: "Immutable",
+        description: "",
+        connectionId: await f.connection(),
+        enabled: true,
+      })
+    ).statusCode,
+    200,
   );
   assert.equal(
     (

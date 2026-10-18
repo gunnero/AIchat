@@ -1370,8 +1370,9 @@ function ProjectForm({
         Projektet er aktivt
       </label>
       <p className="footnote">
-        Et projekt med promptversioner beholder sin OpenAI-forbindelse. Opret et
-        nyt projekt, hvis det skal flyttes til en anden forbindelse.
+        Du kan vælge den første forbindelse senere. Et tilknyttet projekt med
+        promptversioner beholder sin OpenAI-forbindelse. Opret et nyt projekt,
+        hvis det skal flyttes til en anden forbindelse.
       </p>
       <Save busy={busy} />
     </form>
