@@ -1,6 +1,7 @@
 [Unit]
-Description=AI Kundetypeassistent administrator service
-After=network-online.target
+Description=AI Kundetypeassistent customer and administrator service
+After=network-online.target postgresql@18-ai.service
+Requires=postgresql@18-ai.service
 Wants=network-online.target
 
 [Service]

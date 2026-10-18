@@ -1,0 +1,67 @@
+# Customer workspace and private history
+
+This batch replaces the root synthetic demonstration with the real invitation-only customer application. `/backoffice/` remains administration; `/demo/` remains an explicitly synthetic, in-memory demonstration. The approved monochrome option 1 layout is retained, including grayscale logo, project selector, private history, mobile drawer and English/Danish controls.
+
+Customers can create, reopen, rename, search titles and permanently delete their own conversations, and save user messages. **AI replies are disabled.** There are no provider calls, simulated assistant messages, charges, attachments, sharing, packages or usage ledger in this batch. Allowances in the backoffice are still configuration only. Broader supplier/GDPR, recovery automation and customer launch requirements remain open.
+
+## Identity and access
+
+The existing invitation/password/TOTP system is retained. A root-scoped HttpOnly, Secure, SameSite=Strict session supports both applications. Customers arriving at `/backoffice/` go to `/`; Admins arriving at `/` go to `/backoffice/`. Old invitation URLs remain valid. Public first-owner setup is denied; private loopback setup and the reserved owner identity remain supported. A database trigger preserves the protected first Admin, whose displayed role is still simply Admin.
+
+All conversation operations derive the customer from the authenticated session, check active account/expiry and project membership, and apply PostgreSQL forced row policies using a transaction-local session hash. No identity/configuration supplied by the client authorizes access. Admin sessions cannot resolve a chat owner. `ai_control` cannot read the private schema; `ai_chat` cannot read account, MFA or provider tables. Neither runtime role owns tables, inherits `ai_owner`, is a superuser or bypasses row policies. The operator-only `ai_migrator` can perform maintenance/backups; OS/DB operators remain technically privileged. This is not end-to-end encryption.
+
+Conversations pin their customer, project and assigned immutable prompt version. A changed assignment permits reading/renaming/deleting older history, but rejects new messages there. Revocation/pausing hides retained history; a regrant can make it visible again. Policy-bound transactions serialize with account/assignment edits; response delivery rechecks session and membership. Customers cannot edit message history or add assistant-role records. Deletion cascades to messages.
+
+Titles and bodies use AES-256-GCM with record/customer/project context and the existing private vault key. Search decrypts only authorized title candidates in keyset batches; it never searches bodies or persists a plaintext title index. This first-release title search scans that customer's project titles; large-history performance should be measured before scaling. Audit entries contain no chat content. Customer API URLs are excluded from Apache's combined access log so search phrases are not logged. Private responses use `Cache-Control: no-store`; there is no service worker or sensitive local/session storage. In-memory drafts and request IDs are scoped per customer/project/conversation, cleared on unmount/logout, and stale responses are discarded. Browser restoration revalidates identity.
+
+## API
+
+All mutations require the exact application Origin, JSON and session CSRF token. Unknown/unauthorized conversation IDs return the same 404. Routes are under `/api/customer`; authentication aliases `/api/auth/{login,session,logout,password,reauth}` retain the existing backoffice endpoints.
+
+| Method and path | Behavior |
+| --- | --- |
+| GET `/projects` | Own enabled assigned project display metadata; `aiEnabled:false`. |
+| GET `/projects/:projectId/conversations?q=&limit=&cursor=` | Title-only search, up to 50 results, authenticated encrypted cursor. |
+| POST `/projects/:projectId/conversations` | `{requestId:UUID}` creates or retries a conversation; server chooses owner/version. |
+| GET/PATCH/DELETE `/projects/:projectId/conversations/:id` | Read metadata; rename with `{title}` (1–120 characters); delete with `{}`. |
+| GET `/projects/:projectId/conversations/:id/messages?before=&limit=` | Ordered message page, up to 100 results, with older-message cursor. |
+| POST `/projects/:projectId/conversations/:id/messages` | `{text,requestId:UUID}` saves up to 20,000 characters as a user message. |
+
+Creation retries reuse the customer's request identifier. Message writes lock their conversation, assign increasing sequence numbers and deduplicate requests. Reusing an identifier for different content is rejected. Titles derive from the first message until manually renamed. Empty titles display a localized “New conversation”. No browser draft is claimed saved until the server confirms it.
+
+## PostgreSQL and migration
+
+Production uses PostgreSQL **18**, schema **3**, Node **24.22**, and the existing single Fastify service. SQLite remains only for legacy tests and an explicit one-time import. Startup requires `CONTROL_DATABASE_URL` and `CHAT_DATABASE_URL`, checks the runtime roles/schema and fails closed; it never opens SQLite as a fallback.
+
+On jig the dedicated `18/ai` cluster uses port 5433 **only as a Unix socket** in `/run/postgresql-ai`; `listen_addresses` is empty. Peer mapping permits the non-login OS service account `ai-kundetype` to use only `ai_control`/`ai_chat`, and the non-login operator account `ai-migrate` to use `ai_migrator`. There are no database passwords in the service or browser. Database files belong to postgres; application code stays root-owned/read-only and the vault/journal stay in private service state. PostgreSQL logs omit statements, bindings and detail fields.
+
+Migration procedure:
+
+1. Preserve service unit, non-secret release environment and ai-only Apache includes outside active include paths. Record unrelated vhost hashes. Create a consistent SQLite/vault checkpoint using the old release's backup tool.
+2. Rehearse `server/migrate.mjs <checkpoint>/backoffice.sqlite` into the separate empty `ai_rehearsal` database as `ai-migrate`, with `MIGRATION_DATABASE_URL` pointing to that database. The importer verifies schema 2, SQLite integrity/FKs and every imported row; it preserves all identity/configuration IDs, password hashes, MFA ciphertext/replay counters, owner reservation/protection, assignments, credentials, pending invitations and audit records. It emits counts only.
+3. Validate a PostgreSQL backup/restore rehearsal and private role restrictions. Stop the application, take a second final SQLite/vault checkpoint, and import that checkpoint into the empty `ai_customer` database. Import refuses an existing target schema rather than silently skipping newer SQLite records. Authentication/setup/registration sessions are deliberately invalidated once; users keep their enrolled credentials.
+4. Point the service at verified PostgreSQL connections and the reviewed release; validate/reload only the ai Apache configuration. Serve the demo from its own `/demo/` build with a matching asset base. Retain the old release and SQLite checkpoint offline.
+5. Once PostgreSQL accepts new writes, use a forward repair or a PostgreSQL restore that preserves new writes. **Never switch back to the old SQLite snapshot.** The migration checkpoint is not a post-cutover rollback database.
+
+## Backup and deletion-safe recovery
+
+Run `server/backup.mjs <new-private-directory>` with `BACKUP_DATABASE_URL` set to the operator Unix-socket connection, `STATE_DIR` set to private service state and PostgreSQL 18's `pg_dump` on PATH. The tool writes a consistent custom-format dump, matching `vault.key`, `deletions.jsonl` and SHA-256 manifest, all mode 0600 inside a 0700 directory. Keep the vault with the dump. The new tool requires PostgreSQL unless `LEGACY_SQLITE_BACKUP=1` is explicitly selected for old fixtures/checkpoints.
+
+Each confirmed conversation deletion inserts a content-free database tombstone and fsyncs an independent private deletion journal before committing. The journal contains IDs and time, never titles/bodies. Retain the latest journal independently of database snapshots, including with offsite backup operations. A failed database commit after journal fsync may preserve the customer's requested deletion for recovery; it cannot delete someone else's conversation.
+
+Restore while offline into an **empty isolated database**, using PostgreSQL 18's matching client, the matching vault and the **latest independent journal**, not merely the older copy packaged with the snapshot:
+
+```sh
+MIGRATION_DATABASE_URL='<operator connection to empty isolated target>' \
+  node server/restore.mjs /private/backup /private/latest/deletions.jsonl
+```
+
+The restore verifies checksums, restores schema/data, merges tombstones, removes deleted conversations/messages, verifies removal and revokes all sessions before returning success. It writes the merged journal next to the supplied input as `<journal>.replayed` (0600); copy that merged file into runtime state when activating the restored database. It refuses a missing journal or an existing application database. Restore the vault and merged/latest journal into private runtime state before enabling traffic. Keep later independent journal entries when restoring an older snapshot. Do not enable the restored application if any step fails. Offsite scheduling, journal retention/loss recovery, monitoring and recovery objectives still need the separate operational release work; this batch does not promise immediate erasure from historical backup media.
+
+## Verification
+
+`npm run check` in `backoffice/` runs legacy account tests, PostgreSQL integration tests when configured, customer UI tests and a production build. CI always supplies PostgreSQL 18 and two disposable databases, and tests real dump/restore with matching clients. Local integration runs require `TEST_DATABASE_URL`, `TEST_RESTORE_DATABASE_URL`, and `PG_DUMP`/`PG_RESTORE` pointing to version 18 clients. Test roles/passwords in `tests/postgres-ci.sql` are exclusively disposable CI fixtures; never use them on jig.
+
+Coverage includes two customers with shared/separate projects, both Admin identities, direct-ID/search/page isolation, RLS denial without context, pool context cleanup, retry ordering/deduplication, revoked/expired access, changed prompts, encrypted storage, migration, invitation registration through PostgreSQL, backup restoration after a later deletion, safe text rendering, per-project drafts and stale responses after switching accounts. Email is fake and OpenAI is never contacted. The original demo checks, Sites artifacts and production guard remain required.
+
+Browser review used synthetic local accounts: password/TOTP login, save then refresh/reopen, English/Danish, desktop 1280×720 and mobile 390×844, mobile project switching and a focus-contained native dialog drawer. Review found and fixed a shared footer-style collision affecting composer width. Synthetic records and keys are excluded from deployment.

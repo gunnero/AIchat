@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "build:jig-demo": "tsc --noEmit && vite build --mode demo --base=/demo/"
   },
   "dependencies": {
     "@fontsource/source-sans-3": "5.3.1",

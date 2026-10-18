@@ -1,3 +1,5 @@
+> The real customer workspace now persists owner/project-scoped conversations and pins assigned prompt versions. Assignment changes make earlier histories read-only for messaging; revoked access hides retained histories. AI and sharing remain disabled there. See [customer workspace](customer-workspace.md). The demo sections below still describe synthetic /demo/ behavior.
+
 # Projects, prompt versions and customer assignments
 
 Meeting update, 18 October 2026: customer access and prompt assignments are managed in this application. The intended source configuration is created in OpenAI Platform. A customer may access multiple projects, with one explicitly selected prompt version per project. Project names do not change the approved black-and-white palette.

@@ -1,3 +1,5 @@
+> Current customer-workspace operations use PostgreSQL 18 and the root customer app. Follow [the current workspace and recovery runbook](customer-workspace.md). The SQLite/root-demo deployment sections below are historical; do not use their old rollback procedure after PostgreSQL accepts writes.
+
 # Demo deployment on jig
 
 Deployment status on 18 October 2026: **live and verified at [https://ai.igurl.dk](https://ai.igurl.dk/)**. This is the synthetic, in-memory demo. It has no real authentication, AI requests, customer database, email delivery or billing. Do not use it for customer data.

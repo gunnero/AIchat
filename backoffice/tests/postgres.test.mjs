@@ -1,0 +1,816 @@
+import { test, before, beforeEach, after } from "node:test";
+import assert from "node:assert/strict";
+import { randomBytes, randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { openPostgres } from "../server/postgres.mjs";
+import { migrate } from "../server/migrate.mjs";
+import { openDatabase } from "../server/database.mjs";
+import { buildServer } from "../server/app.mjs";
+import {
+  token,
+  digest,
+  csrfFor,
+  seal,
+  unseal,
+  newOtpSecret,
+  hashPassword,
+  otp,
+} from "../server/security.mjs";
+const enabled = !!process.env.TEST_DATABASE_URL;
+const pgtest = (name, fn) => test(name, { skip: !enabled }, fn);
+const key = randomBytes(32),
+  origin = "https://customer.example.test";
+let owner, app, fixtures;
+const uri = (role) => {
+  const u = new URL(process.env.TEST_DATABASE_URL);
+  u.username = role;
+  return u.href;
+};
+const maintenance = (fn) =>
+  owner.transaction(async () => {
+    await owner.query("SET LOCAL ROLE ai_owner");
+    return fn();
+  });
+const q = (sql, args = []) => owner.query(sql, args).then((r) => r.rows);
+async function account(role = "customer", customer = null, protectedOwner = 0) {
+  const id = randomUUID(),
+    raw = token(),
+    now = Date.now(),
+    secret = newOtpSecret(),
+    password = "Synthetic fixture password 2026!";
+  await q(
+    "INSERT INTO admins(id,email,name,username,role,protected,status,password_hash,mfa_secret,created_at,customer_id) VALUES($1,$2,$3,$4,$5,$6,'active',$7,$8,$9,$10)",
+    [
+      id,
+      id + "@example.test",
+      "Synthetic " + role,
+      "u" + id,
+      role,
+      protectedOwner,
+      await hashPassword(password),
+      seal(key, secret, "mfa:" + id),
+      new Date().toISOString(),
+      customer,
+    ],
+  );
+  await q("INSERT INTO sessions VALUES($1,$2,$3,$3,$4,$3)", [
+    digest(raw),
+    id,
+    now,
+    now + 43200000,
+  ]);
+  return {
+    id,
+    raw,
+    secret,
+    password,
+    headers: {
+      cookie: "bo_session=" + raw,
+      origin,
+      "content-type": "application/json",
+      "x-csrf-token": csrfFor(key, raw),
+    },
+  };
+}
+async function customer() {
+  const id = randomUUID(),
+    now = new Date().toISOString();
+  await q("INSERT INTO customers VALUES($1,$2,$3,'active',null,100,$4,$4)", [
+    id,
+    "Synthetic customer",
+    id + "@example.test",
+    now,
+  ]);
+  return { customerId: id, ...(await account("customer", id)) };
+}
+async function project() {
+  const id = randomUUID(),
+    v = randomUUID(),
+    now = new Date().toISOString();
+  await q(
+    "INSERT INTO projects VALUES($1,$2,'Synthetic project',null,1,$3,$3)",
+    [id, "Project " + id, now],
+  );
+  await q(
+    "INSERT INTO prompt_versions VALUES($1,$2,$3,'Synthetic prompt',1,$4,'','checksum',$5)",
+    [
+      v,
+      id,
+      randomUUID(),
+      seal(key, "Synthetic instructions", "prompt:" + v),
+      now,
+    ],
+  );
+  return { id, v };
+}
+const url = (p, c = "") =>
+  "/api/customer/projects/" + p.id + "/conversations" + (c ? "/" + c : "");
+async function req(who, path, method = "GET", body) {
+  return app.inject({
+    url: path,
+    method,
+    headers: who?.headers || {},
+    ...(body !== undefined ? { payload: body } : {}),
+  });
+}
+async function create(who, p, requestId = randomUUID()) {
+  const r = await req(who, url(p), "POST", { requestId });
+  assert.equal(r.statusCode, 200, r.body);
+  return r.json();
+}
+async function save(
+  who,
+  p,
+  c,
+  text = "Private synthetic message",
+  requestId = randomUUID(),
+) {
+  const r = await req(who, url(p, c.id) + "/messages", "POST", {
+    text,
+    requestId,
+  });
+  assert.equal(r.statusCode, 200, r.body);
+  return r.json();
+}
+before(async () => {
+  if (!enabled) return;
+  owner = openPostgres(uri("ai_migrator"));
+  await maintenance(async () => {
+    await q("DROP SCHEMA IF EXISTS private CASCADE");
+    await q("DROP SCHEMA public CASCADE");
+    await q("CREATE SCHEMA public AUTHORIZATION ai_owner");
+  });
+  await migrate(owner);
+});
+beforeEach(async () => {
+  if (!enabled) return;
+  await app?.close();
+  await maintenance(() =>
+    q(
+      "TRUNCATE customers,admins,connections,projects,prompt_versions,assignments,audit,owner_identity,invitations,login_failures,sessions,setup_sessions,registrations,private.conversations,private.messages,private.deletions CASCADE",
+    ),
+  );
+  fixtures = await maintenance(async () => {
+    const a = await customer(),
+      b = await customer(),
+      p = await project(),
+      other = await project(),
+      admin = await account("admin"),
+      main = await account("admin", null, 1);
+    await q("INSERT INTO assignments VALUES($1,$2,$3),($4,$2,$3),($1,$5,$6)", [
+      a.customerId,
+      p.id,
+      p.v,
+      b.customerId,
+      other.id,
+      other.v,
+    ]);
+    return { a, b, p, other, admin, main };
+  });
+  app = await buildServer({
+    database: openPostgres(uri("ai_control")),
+    customerDatabase: openPostgres(uri("ai_chat")),
+    vaultKey: key,
+    origin,
+    providerCheck: async () => {
+      throw new Error("No provider calls in history tests");
+    },
+    mailer: async () => {
+      throw new Error("No fixture email");
+    },
+  });
+});
+after(async () => {
+  if (enabled) {
+    await app?.close();
+    await owner?.close();
+  }
+});
+pgtest(
+  "PostgreSQL: every operation is private across customers, projects and both Admin identities",
+  async () => {
+    const { a, b, p, other, admin, main } = fixtures,
+      c = await create(a, p);
+    await save(a, p, c);
+    assert.equal((await req(null, url(p))).statusCode, 401);
+    for (const who of [admin, main])
+      assert.equal((await req(who, url(p, c.id))).statusCode, 403);
+    assert.deepEqual((await req(b, url(p))).json().items, []);
+    for (const route of [
+      url(p, c.id),
+      url(p, c.id) + "/messages",
+      url(other, c.id),
+    ])
+      assert.equal((await req(b, route)).statusCode, 404);
+    assert.equal(
+      (await req(b, url(p, c.id), "PATCH", { title: "attack" })).statusCode,
+      404,
+    );
+    assert.equal((await req(b, url(p, c.id), "DELETE", {})).statusCode, 404);
+    assert.equal(
+      (
+        await req(b, url(p, c.id) + "/messages", "POST", {
+          text: "attack",
+          requestId: randomUUID(),
+        })
+      ).statusCode,
+      404,
+    );
+    assert.equal(
+      (
+        await req(a, url(p), "POST", {
+          requestId: randomUUID(),
+          customerId: b.customerId,
+        })
+      ).statusCode,
+      400,
+    );
+    assert.equal(
+      (
+        await req(a, url(p, c.id) + "/messages", "POST", {
+          text: "attack",
+          requestId: randomUUID(),
+          role: "assistant",
+        })
+      ).statusCode,
+      400,
+    );
+    assert.equal((await req(a, url(other, c.id))).statusCode, 404);
+    assert.equal((await req(a, "/backoffice/api/customers")).statusCode, 403);
+  },
+);
+pgtest(
+  "PostgreSQL: row policies deny unscoped SQL, forged customers, Admin sessions, and pooled context leakage",
+  async () => {
+    const { a, b, p, admin, main } = fixtures,
+      c = await create(a, p);
+    await save(a, p, c);
+    const chat = openPostgres(uri("ai_chat"), { max: 1 });
+    try {
+      assert.deepEqual(
+        (await chat.query("SELECT * FROM private.messages")).rows,
+        [],
+      );
+      for (const who of [b, admin, main])
+        await chat.transaction(
+          async () =>
+            assert.deepEqual(
+              (await chat.query("SELECT * FROM private.messages")).rows,
+              [],
+            ),
+          { sessionHash: digest(who.raw), shared: true },
+        );
+      await chat.transaction(
+        async () =>
+          assert.equal(
+            (await chat.query("SELECT * FROM private.messages")).rows.length,
+            1,
+          ),
+        { sessionHash: digest(a.raw), shared: true },
+      );
+      assert.deepEqual(
+        (await chat.query("SELECT * FROM private.messages")).rows,
+        [],
+      );
+      await assert.rejects(chat.query("SELECT * FROM admins"), {
+        code: "42501",
+      });
+      await assert.rejects(app.db.query("SELECT * FROM private.messages"), {
+        code: "42501",
+      });
+      await chat
+        .transaction(
+          async () => {
+            await assert.rejects(
+              chat.query(
+                "INSERT INTO private.conversations(id,customer_id,project_id,version_id,title_secret,created_at,updated_at,create_request_id) VALUES($1,$2,$3,$4,'forged',1,1,$5)",
+                [randomUUID(), b.customerId, p.id, p.v, randomUUID()],
+              ),
+              { code: "42501" },
+            );
+            throw new Error("rollback");
+          },
+          { sessionHash: digest(a.raw), shared: true },
+        )
+        .catch((e) => assert.equal(e.message, "rollback"));
+    } finally {
+      await chat.close();
+    }
+  },
+);
+pgtest(
+  "PostgreSQL: concurrent retries are ordered, deduplicated and survive process restart",
+  async () => {
+    const { a, p } = fixtures,
+      id = randomUUID();
+    const [one, two] = await Promise.all([create(a, p, id), create(a, p, id)]);
+    assert.equal(one.id, two.id);
+    const rid = randomUUID();
+    const [m, n] = await Promise.all([
+      save(a, p, one, "first", rid),
+      save(a, p, one, "first", rid),
+    ]);
+    assert.equal(m.id, n.id);
+    const more = await Promise.all(
+      Array.from({ length: 5 }, (_, i) => save(a, p, one, "next " + i)),
+    );
+    assert.deepEqual(more.map((v) => v.sequence).sort(), [2, 3, 4, 5, 6]);
+    assert.equal(
+      (
+        await req(a, url(p, one.id) + "/messages", "POST", {
+          text: "different",
+          requestId: rid,
+        })
+      ).statusCode,
+      409,
+    );
+    await app.close();
+    app = await buildServer({
+      database: openPostgres(uri("ai_control")),
+      customerDatabase: openPostgres(uri("ai_chat")),
+      vaultKey: key,
+      origin,
+    });
+    const history = await req(a, url(p, one.id) + "/messages");
+    assert.equal(history.statusCode, 200);
+    assert.equal(history.json().items.length, 6);
+    assert.equal(history.headers["cache-control"], "no-store");
+  },
+);
+pgtest(
+  "PostgreSQL: title-only search, owner-bound cursors, rename, pagination, encryption and cascading deletion",
+  async () => {
+    const { a, b, p } = fixtures,
+      c = await create(a, p);
+    await save(a, p, c, "Body-only phrase");
+    assert.equal(
+      (await req(a, url(p, c.id), "PATCH", { title: "My private title" }))
+        .statusCode,
+      200,
+    );
+    const second = await create(a, p);
+    await save(a, p, second, "Another title");
+    assert.equal((await req(a, url(p) + "?q=PRIVATE")).json().items.length, 1);
+    assert.equal(
+      (await req(a, url(p) + "?q=Body-only")).json().items.length,
+      0,
+    );
+    const page = (await req(a, url(p) + "?limit=1")).json();
+    assert.equal(page.items.length, 1);
+    assert.ok(page.nextCursor);
+    assert.equal(
+      (
+        await req(
+          a,
+          url(p) + "?limit=1&cursor=" + encodeURIComponent(page.nextCursor),
+        )
+      ).json().items.length,
+      1,
+    );
+    assert.equal(
+      (await req(b, url(p) + "?cursor=" + encodeURIComponent(page.nextCursor)))
+        .statusCode,
+      400,
+    );
+    await maintenance(async () => {
+      const [raw] = await q(
+        "SELECT title_secret FROM private.conversations WHERE id=$1",
+        [c.id],
+      );
+      assert.ok(!raw.title_secret.includes("My private"));
+      const [body] = await q(
+        "SELECT body_secret FROM private.messages WHERE conversation_id=$1",
+        [c.id],
+      );
+      assert.ok(!body.body_secret.includes("Body-only"));
+    });
+    assert.equal((await req(a, url(p, c.id), "DELETE", {})).statusCode, 200);
+    assert.equal((await req(a, url(p, c.id))).statusCode, 404);
+    await maintenance(async () => {
+      assert.equal(
+        (
+          await q("SELECT * FROM private.messages WHERE conversation_id=$1", [
+            c.id,
+          ])
+        ).length,
+        0,
+      );
+      assert.equal(
+        (
+          await q("SELECT * FROM private.deletions WHERE conversation_id=$1", [
+            c.id,
+          ])
+        ).length,
+        1,
+      );
+    });
+  },
+);
+pgtest(
+  "PostgreSQL: reassignment is read-only, revocation hides retained history, and disabled/expired accounts stop immediately",
+  async () => {
+    const { a, p } = fixtures,
+      c = await create(a, p);
+    await save(a, p, c);
+    const v = randomUUID();
+    await maintenance(async () => {
+      const [prior] = await q("SELECT * FROM prompt_versions WHERE id=$1", [
+        p.v,
+      ]);
+      await q("INSERT INTO prompt_versions VALUES($1,$2,$3,$4,2,$5,$6,$7,$8)", [
+        v,
+        p.id,
+        prior.prompt_id,
+        prior.name,
+        seal(key, "new", "prompt:" + v),
+        "",
+        "checksum",
+        new Date().toISOString(),
+      ]);
+      await q(
+        "UPDATE assignments SET version_id=$1 WHERE customer_id=$2 AND project_id=$3",
+        [v, a.customerId, p.id],
+      );
+    });
+    assert.equal((await req(a, url(p, c.id))).json().writable, false);
+    assert.equal(
+      (
+        await req(a, url(p, c.id) + "/messages", "POST", {
+          text: "stale",
+          requestId: randomUUID(),
+        })
+      ).statusCode,
+      409,
+    );
+    const fresh = await create(a, p);
+    await save(a, p, fresh, "new version");
+    await maintenance(() =>
+      q("DELETE FROM assignments WHERE customer_id=$1 AND project_id=$2", [
+        a.customerId,
+        p.id,
+      ]),
+    );
+    assert.equal((await req(a, url(p, c.id))).statusCode, 404);
+    assert.equal((await req(a, url(p))).statusCode, 404);
+    await maintenance(() =>
+      q("INSERT INTO assignments VALUES($1,$2,$3)", [a.customerId, p.id, v]),
+    );
+    assert.equal((await req(a, url(p, c.id))).statusCode, 200);
+    await maintenance(() =>
+      q("UPDATE customers SET expires='2000-01-01' WHERE id=$1", [
+        a.customerId,
+      ]),
+    );
+    assert.equal((await req(a, url(p, c.id))).statusCode, 401);
+  },
+);
+pgtest(
+  "PostgreSQL: canonical authentication preserves password/MFA protection, CSRF and protected-owner triggers",
+  async () => {
+    const { a, p, main } = fixtures;
+    const signed = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { origin, "content-type": "application/json" },
+      payload: {
+        email: "u" + a.id,
+        password: a.password,
+        code: otp(a.secret).generate(),
+      },
+    });
+    assert.equal(signed.statusCode, 200, signed.body);
+    const cookie = signed.cookies.find(
+      (c) => c.name === "bo_session" && c.value,
+    );
+    assert.equal(cookie.path, "/");
+    assert.ok(cookie.httpOnly && cookie.secure);
+    assert.equal(signed.json().role, "Customer");
+    assert.equal(
+      (
+        await req(
+          { ...a, headers: { ...a.headers, "x-csrf-token": "invalid" } },
+          url(p),
+          "POST",
+          { requestId: randomUUID() },
+        )
+      ).statusCode,
+      403,
+    );
+    await assert.rejects(
+      app.db.query("UPDATE admins SET status='paused' WHERE id=$1", [main.id]),
+      { code: "23514" },
+    );
+    await assert.rejects(
+      app.db.query("DELETE FROM admins WHERE id=$1", [main.id]),
+      { code: "23514" },
+    );
+  },
+);
+pgtest(
+  "PostgreSQL: SQLite import verifies preserved identities, encrypted secrets and invitations while invalidating sessions",
+  async () => {
+    await app.close();
+    app = null;
+    const dir = await mkdtemp(join(tmpdir(), "ai-migrate-")),
+      file = join(dir, "source.sqlite"),
+      sqlite = openDatabase(file),
+      id = randomUUID(),
+      sid = token(),
+      secret = newOtpSecret();
+    const hash = await hashPassword("Synthetic migration password");
+    sqlite
+      .prepare(
+        "INSERT INTO admins(id,email,name,password_hash,mfa_secret,created_at,username,protected) VALUES(?,?,?,?,?,?,?,1)",
+      )
+      .run(
+        id,
+        "migration@example.test",
+        "Migration",
+        hash,
+        seal(key, secret, "mfa:" + id),
+        new Date().toISOString(),
+        "migration",
+      );
+    sqlite
+      .prepare("INSERT INTO sessions VALUES(?,?,?,?,?,?)")
+      .run(
+        digest(sid),
+        id,
+        Date.now(),
+        Date.now(),
+        Date.now() + 43200000,
+        Date.now(),
+      );
+    const iid = randomUUID();
+    sqlite
+      .prepare("INSERT INTO invitations VALUES(?,?,?,?,?,?)")
+      .run(
+        iid,
+        id,
+        digest(token()),
+        Date.now() + 60000,
+        "sent",
+        new Date().toISOString(),
+      );
+    sqlite.close();
+    try {
+      await maintenance(async () => {
+        await q("DROP SCHEMA private CASCADE");
+        await q("DROP SCHEMA public CASCADE");
+        await q("CREATE SCHEMA public AUTHORIZATION ai_owner");
+      });
+      const result = await migrate(owner, file);
+      assert.equal(result.imported, true);
+      await maintenance(async () => {
+        const [row] = await q("SELECT * FROM admins WHERE id=$1", [id]);
+        assert.equal(row.password_hash, hash);
+        assert.equal(unseal(key, row.mfa_secret, "mfa:" + id), secret);
+        assert.equal(row.protected, 1);
+        assert.equal(
+          (await q("SELECT * FROM invitations WHERE id=$1", [iid])).length,
+          1,
+        );
+        assert.equal((await q("SELECT * FROM sessions")).length, 0);
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+pgtest(
+  "PostgreSQL: revocation waits for active policy transactions and defeats a queued request before data can be returned",
+  async () => {
+    const { a, p } = fixtures,
+      c = await create(a, p);
+    await save(a, p, c);
+    const chat = openPostgres(uri("ai_chat"));
+    let release, locked;
+    const ready = new Promise((r) => (locked = r)),
+      gate = new Promise((r) => (release = r));
+    const reading = chat.transaction(
+      async () => {
+        await chat.query("SELECT * FROM private.messages");
+        locked();
+        await gate;
+      },
+      { sessionHash: digest(a.raw), shared: true },
+    );
+    await ready;
+    let revoked = false;
+    const revoking = maintenance(async () => {
+      await q(
+        "DELETE FROM assignments WHERE customer_id=$1 AND project_id=$2",
+        [a.customerId, p.id],
+      );
+      revoked = true;
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(revoked, false);
+    release();
+    await reading;
+    await revoking;
+    assert.equal((await req(a, url(p, c.id) + "/messages")).statusCode, 404);
+    await chat.close();
+  },
+);
+pgtest(
+  "PostgreSQL: invitations, registration and metadata editing operate through the migrated backoffice adapter",
+  async () => {
+    const { admin, p } = fixtures;
+    let delivered;
+    await app.close();
+    app = await buildServer({
+      database: openPostgres(uri("ai_control")),
+      customerDatabase: openPostgres(uri("ai_chat")),
+      vaultKey: key,
+      origin,
+      mailer: async (m) => {
+        delivered = m;
+        return true;
+      },
+    });
+    const c = await req(admin, "/backoffice/api/customers", "POST", {
+      name: "Invited fixture",
+      email: "invited@example.test",
+      locale: "en",
+      status: "pending",
+      expires: null,
+      allowance: 20,
+      assignments: [{ projectId: p.id, versionId: p.v }],
+    });
+    assert.equal(c.statusCode, 200, c.body);
+    assert.ok(delivered.text.includes("#invite="));
+    const raw = delivered.text.match(/#invite=([A-Za-z0-9_-]+)/)[1];
+    const begun = await app.inject({
+      method: "POST",
+      url: "/backoffice/api/register/begin",
+      headers: { origin, "content-type": "application/json" },
+      payload: { token: raw },
+    });
+    assert.equal(begun.statusCode, 200, begun.body);
+    const reg = begun.cookies.find((c) => c.name === "bo_registration"),
+      setup = begun.json();
+    const complete = await app.inject({
+      method: "POST",
+      url: "/backoffice/api/register/complete",
+      headers: {
+        origin,
+        "content-type": "application/json",
+        cookie: reg.name + "=" + reg.value,
+        "x-csrf-token": setup.csrf,
+      },
+      payload: {
+        username: "invited-fixture",
+        password: "Synthetic invited password 2026!",
+        code: otp(setup.secret).generate(),
+      },
+    });
+    assert.equal(complete.statusCode, 200, complete.body);
+    const list = await req(admin, "/backoffice/api/customers");
+    assert.equal(list.statusCode, 200, list.body);
+    assert.ok(
+      list
+        .json()
+        .find((v) => v.id === c.json().id)
+        .assignments.some((v) => v.projectId === p.id),
+    );
+    const staff = await req(admin, "/backoffice/api/staff");
+    assert.equal(staff.statusCode, 200, staff.body);
+    assert.ok(
+      staff
+        .json()
+        .every((v) => v.role === "Admin" && !Object.hasOwn(v, "protected")),
+    );
+  },
+);
+pgtest(
+  "PostgreSQL: a real backup restores with the vault, reapplies newer deletions, and revokes old sessions",
+  async () => {
+    assert.ok(
+      process.env.TEST_RESTORE_DATABASE_URL,
+      "TEST_RESTORE_DATABASE_URL required alongside PostgreSQL integration tests",
+    );
+    const { backupPostgres, restorePostgres } =
+      await import("../server/postgres-backup.mjs");
+    const { writeFile, readFile } = await import("node:fs/promises");
+    const { a, p } = fixtures,
+      c = await create(a, p),
+      keep = await create(a, p);
+    await save(a, p, c, "Deleted after the snapshot");
+    await save(a, p, keep, "Surviving encrypted content");
+    const dir = await mkdtemp(join(tmpdir(), "ai-pg-restore-")),
+      backup = join(dir, "backup"),
+      journal = join(dir, "deletions.jsonl");
+    const restore = openPostgres(process.env.TEST_RESTORE_DATABASE_URL);
+    try {
+      await writeFile(join(dir, "vault.key"), key, { mode: 0o600 });
+      await writeFile(journal, "", { mode: 0o600 });
+      await backupPostgres({
+        databaseUrl: uri("ai_migrator"),
+        state: dir,
+        destination: backup,
+      });
+      await req(a, url(p, c.id), "DELETE", {});
+      await writeFile(
+        journal,
+        JSON.stringify({
+          conversationId: c.id,
+          customerId: a.customerId,
+          projectId: p.id,
+          deletedAt: Date.now(),
+        }) + "\n",
+        { mode: 0o600 },
+      );
+      await restore.transaction(async () => {
+        await restore.query("SET LOCAL ROLE ai_owner");
+        await restore.query(
+          "DROP SCHEMA IF EXISTS private CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION ai_owner",
+        );
+      });
+      const result = await restorePostgres({
+        databaseUrl: process.env.TEST_RESTORE_DATABASE_URL,
+        backup,
+        journal,
+      });
+      assert.equal(result.deletionJournalApplied, true);
+      assert.ok((await readFile(result.journalOutput, "utf8")).includes(c.id));
+      await restore.transaction(async () => {
+        await restore.query("SET LOCAL ROLE ai_owner");
+        assert.equal(
+          (
+            await restore.query(
+              "SELECT * FROM private.conversations WHERE id=$1",
+              [c.id],
+            )
+          ).rows.length,
+          0,
+        );
+        assert.equal(
+          (await restore.query("SELECT * FROM sessions")).rows.length,
+          0,
+        );
+        const [message] = (
+          await restore.query(
+            "SELECT * FROM private.messages WHERE conversation_id=$1",
+            [keep.id],
+          )
+        ).rows;
+        assert.equal(
+          unseal(
+            await readFile(join(backup, "vault.key")),
+            message.body_secret,
+            `chat-message:${a.customerId}:${p.id}:${keep.id}:${message.id}`,
+          ),
+          "Surviving encrypted content",
+        );
+      });
+      await assert.rejects(
+        restorePostgres({
+          databaseUrl: process.env.TEST_RESTORE_DATABASE_URL,
+          backup,
+        }),
+        /journal is required/,
+      );
+    } finally {
+      await restore.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+pgtest(
+  "PostgreSQL: a staff mutation queued after authentication rechecks permission under the transaction lock",
+  async () => {
+    const { admin, p } = fixtures;
+    let entered, release;
+    const reached = new Promise((r) => (entered = r)),
+      gate = new Promise((r) => (release = r)),
+      original = app.db.transaction;
+    app.db.transaction = async (fn) => {
+      entered();
+      await gate;
+      return original(fn);
+    };
+    const updating = req(admin, "/backoffice/api/projects/" + p.id, "PUT", {
+      name: "Should not persist",
+      description: "",
+      connectionId: null,
+      enabled: true,
+    });
+    await reached;
+    await maintenance(async () => {
+      await q("UPDATE admins SET status='paused' WHERE id=$1", [admin.id]);
+      await q("DELETE FROM sessions WHERE admin_id=$1", [admin.id]);
+    });
+    release();
+    const response = await updating;
+    assert.equal(response.statusCode, 401, response.body);
+    await maintenance(async () =>
+      assert.notEqual(
+        (await q("SELECT name FROM projects WHERE id=$1", [p.id]))[0].name,
+        "Should not persist",
+      ),
+    );
+  },
+);

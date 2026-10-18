@@ -634,7 +634,12 @@ test("consistent database and vault backups restore encrypted records without th
     ["server/backup.mjs", destination],
     {
       cwd: new URL("..", import.meta.url),
-      env: { ...process.env, STATE_DIR: directory },
+      env: {
+        ...process.env,
+        STATE_DIR: directory,
+        BACKUP_DATABASE_URL: "",
+        LEGACY_SQLITE_BACKUP: "1",
+      },
     },
   );
   const manifest = JSON.parse(

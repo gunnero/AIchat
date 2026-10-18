@@ -1,3 +1,5 @@
+> 18 October customer-workspace approval: production identity, assignments and private chat history now share PostgreSQL 18 on jig, with separate control/chat roles and forced row policies. The invitation/password/TOTP identity system is retained. This supersedes the temporary production SQLite exception described below. See [current implementation and limits](customer-workspace.md).
+
 # ADR 001 — application foundation
 
 Status: accepted for the first prototype batch; supplier provisioning and production controls remain separate tasks. Date: 16 October 2026.

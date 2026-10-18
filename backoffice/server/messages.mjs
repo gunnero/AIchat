@@ -1,5 +1,53 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Prøv igen": "Try again",
+  "Åbn samtaler": "Open conversations",
+  "Samtalen og alle dens beskeder slettes. Handlingen kan ikke fortrydes.":
+    "This conversation and all its messages will be deleted. This cannot be undone.",
+  Samtaletitel: "Conversation title",
+  "Kun du har adgang til dine private samtaler i appen.":
+    "Only you can access your private conversations in the app.",
+  "Gem besked": "Save message",
+  "Gemmer…": "Saving…",
+  "Skriv din besked…": "Write your message…",
+  "Din besked": "Your message",
+  "Prompten er ændret. Denne samtale kan læses. Start en ny samtale for at fortsætte.":
+    "The prompt has changed. This conversation is read-only. Start a new conversation to continue.",
+  "Skriv din første besked nedenfor.": "Write your first message below.",
+  "Hvad vil du arbejde med?": "What would you like to work on?",
+  Dig: "You",
+  "Vis tidligere beskeder": "Show earlier messages",
+  "Start en samtale": "Start a conversation",
+  "Start en samtale og gem dine beskeder på ét privat sted.":
+    "Start a conversation and keep your messages in one private place.",
+  "Plads til dine tanker.": "Space for your thoughts.",
+  "Kontakt din administrator for at få adgang.":
+    "Contact your administrator to get access.",
+  "Arbejdsrummet kunne ikke åbnes. Prøv igen.":
+    "The workspace could not be opened. Please try again.",
+  "Dine beskeder gemmes privat. AI-svar er endnu ikke aktiveret.":
+    "Your messages are saved privately. AI replies are not enabled yet.",
+  "Slet samtale": "Delete conversation",
+  "Omdøb samtale": "Rename conversation",
+  Privat: "Private",
+  "Privat konto · 2FA": "Private account · 2FA",
+  "Vis flere samtaler": "Show more conversations",
+  "Indlæser…": "Loading…",
+  "Ingen samtaler endnu.": "No conversations yet.",
+  "Ingen titler matcher din søgning.": "No titles match your search.",
+  "Dine samtaler": "Your conversations",
+  "Søg i samtaletitler": "Search conversation titles",
+  "Ny samtale": "New conversation",
+  "Ingen projekter": "No projects",
+  "Beskeden er gemt.": "Message saved.",
+  "Prompten er ændret. Start en ny samtale.":
+    "The prompt has changed. Start a new conversation.",
+  "Anmodningen er allerede brugt.":
+    "This request identifier has already been used.",
+  "Samtalen findes ikke.": "Conversation not found.",
+  "Adgang kræver en invitation, en personlig adgangskode og en authenticator-kode.":
+    "Access requires an invitation, a personal password and an authenticator code.",
+  "Dit private arbejdsrum": "Your private workspace",
   "Tabel med vandret rulning": "Horizontally scrollable table",
   "Rul til siden for flere kolonner.": "Scroll sideways for more columns.",
   Overblik: "Overview",

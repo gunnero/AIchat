@@ -1,3 +1,5 @@
+import { api, ApiError, type Session } from "./client";
+import { CustomerWorkspace } from "./CustomerWorkspace";
 import { t, getLanguage, useLanguage, LanguagePicker } from "./i18n";
 import {
   useEffect,
@@ -7,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
 import {
   SquaresFourIcon,
   UsersIcon,
@@ -26,15 +29,6 @@ import "@fontsource/source-sans-3/600.css";
 import "@fontsource/source-sans-3/700.css";
 import "./style.css";
 
-type Session = {
-  id: string;
-  name: string;
-  email: string;
-  username: string | null;
-  role: "Admin" | "Customer";
-  locale: "en" | "da";
-  csrf: string;
-};
 type Invitation = { id: string; status: string; expires: number } | null;
 type Account = {
   id: string;
@@ -144,47 +138,17 @@ const date = (s: string | null) =>
         ...(s.includes("T") ? { timeStyle: "short" } : {}),
       }).format(new Date(s))
     : "—";
-class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-async function api<T>(
-  path: string,
-  method = "GET",
-  body?: unknown,
-  csrf?: string,
-): Promise<T> {
-  const response = await fetch("/backoffice/api" + path, {
-    method,
-    credentials: "same-origin",
-    headers: {
-      "Accept-Language": getLanguage(),
-      ...(method !== "GET" ? { "Content-Type": "application/json" } : {}),
-      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const data = await response.json();
-  if (!response.ok)
-    throw new ApiError(
-      response.status,
-      data.messageKey ||
-        data.message ||
-        t("Handlingen kunne ikke gennemføres."),
-    );
-  return data;
-}
 function Brand() {
   return (
     <div className="brand">
       <span className="brand-mark">AI</span>
       <div>
         <strong>Kundetypeassistent</strong>
-        <span>Administration</span>
+        <span>
+          {location.pathname.startsWith("/backoffice")
+            ? "Administration"
+            : t("Dit private arbejdsrum")}
+        </span>
       </div>
     </div>
   );
@@ -198,6 +162,7 @@ function App() {
     if (inviteToken)
       history.replaceState(null, "", location.pathname + location.search);
   }, [inviteToken]);
+  const authEpoch = useRef(0);
   const [session, setSession] = useState<Session | null>(null),
     [loading, setLoading] = useState(true),
     [tab, setTab] = useState("overview");
@@ -209,15 +174,53 @@ function App() {
     type: string;
     value?: Customer | Project | Connection | Prompt | Account;
   } | null>(null);
-  const setup = new URLSearchParams(location.search).get("setup") === "1";
+  const backoffice = location.pathname.startsWith("/backoffice");
+  const setup =
+    backoffice && new URLSearchParams(location.search).get("setup") === "1";
   useEffect(() => {
+    document.title = "AI · Kundetypeassistent";
+    const clear = () => {
+      authEpoch.current++;
+      setSession(null);
+      setData(empty);
+      setModal(null);
+    };
+    const restore = (e: PageTransitionEvent) => {
+      if (e.persisted) location.reload();
+    };
+    const hidden = () => {
+      if (document.visibilityState === "hidden") setModal(null);
+    };
+    window.addEventListener("session-expired", clear);
+    const pageHide = () => flushSync(clear);
+    window.addEventListener("pagehide", pageHide);
+    window.addEventListener("pageshow", restore);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.removeEventListener("session-expired", clear);
+      window.removeEventListener("pagehide", pageHide);
+      window.removeEventListener("pageshow", restore);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, []);
+  useEffect(() => {
+    const epoch = authEpoch.current;
+    let mounted = true;
     if (!setup && !inviteToken)
       api<Session>("/auth/session")
-        .then(setSession)
-        .catch((e) => {
-          if (e.status !== 401) setError(e.message);
+        .then((value) => {
+          if (mounted && epoch === authEpoch.current) setSession(value);
         })
-        .finally(() => setLoading(false));
+        .catch((e) => {
+          if (mounted && epoch === authEpoch.current && e.status !== 401)
+            setError(e.message);
+        })
+        .finally(() => {
+          if (mounted) setLoading(false);
+        });
+    return () => {
+      mounted = false;
+    };
   }, [setup, inviteToken]);
   async function reload() {
     const [customers, connections, projects, prompts, audit, staff] =
@@ -292,9 +295,14 @@ function App() {
       </div>
     );
   if (!session) return <Login onLogin={setSession} error={t(error)} />;
-  if (session.role === "Customer")
+  if (session.role === "Customer") {
+    if (backoffice) {
+      location.replace("/");
+      return null;
+    }
     return (
-      <CustomerHome
+      <CustomerWorkspace
+        key={session.id}
         session={session}
         logout={() => {
           setSession(null);
@@ -302,6 +310,11 @@ function App() {
         }}
       />
     );
+  }
+  if (!backoffice) {
+    location.replace("/backoffice/");
+    return null;
+  }
   const selected = tabs().find((t) => t.id === tab)!;
   const navigate = (id: string) => {
     setTab(id);
@@ -1122,7 +1135,7 @@ function Login({
         </form>
         <p className="footnote">
           {t(
-            "Admin og Customer kræver begge adgangskode og 2FA. Første Admin oprettes gennem den private opsætning.",
+            "Adgang kræver en invitation, en personlig adgangskode og en authenticator-kode.",
           )}{" "}
         </p>
       </section>
@@ -2034,77 +2047,6 @@ function Registration({ token }: { token: string }) {
           </p>
         )}
       </section>
-    </div>
-  );
-}
-function CustomerHome({
-  session,
-  logout,
-}: {
-  session: Session;
-  logout: () => void;
-}) {
-  const [home, setHome] = useState<{
-      name: string;
-      projects: { id: string; name: string; description: string }[];
-    } | null>(null),
-    [error, setError] = useState("");
-  useEffect(() => {
-    api<{
-      name: string;
-      projects: { id: string; name: string; description: string }[];
-    }>("/customer/home")
-      .then(setHome)
-      .catch((e) => setError(e.message));
-  }, []);
-  return (
-    <div className="customer-home">
-      <header>
-        <Brand />
-        <LanguagePicker />
-        <button
-          className="button secondary"
-          onClick={async () => {
-            try {
-              await api("/auth/logout", "POST", {}, session.csrf);
-              logout();
-            } catch (e) {
-              setError((e as Error).message);
-            }
-          }}
-        >
-          {t("Log ud")}
-        </button>
-      </header>
-      <main>
-        <p className="eyebrow">CUSTOMER</p>
-        <h1>
-          {t("Velkommen")}, {session.name}
-        </h1>
-        <p>{t("Din konto er beskyttet med adgangskode og 2FA.")}</p>
-        <h2>{t("Dine projekter")}</h2>
-        {error && (
-          <p className="alert" role="alert">
-            {t(error)}
-          </p>
-        )}
-        <div className="projects">
-          {home?.projects.map((p) => (
-            <section key={p.id} className="project-card">
-              <h3>{p.name}</h3>
-              <p>{p.description}</p>
-            </section>
-          ))}
-        </div>
-        {home && !home.projects.length && (
-          <p>{t("Du har endnu ingen tildelte projekter.")}</p>
-        )}
-        <p className="notice">
-          {t(
-            "Live AI-chat og privat historik er endnu ikke åbnet. Du får besked, når din assistent er klar.",
-          )}
-        </p>
-      </main>
     </div>
   );
 }

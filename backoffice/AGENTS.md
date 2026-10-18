@@ -2,7 +2,9 @@
 
 This is a separate, persistent administrator application. Keep `../app/` as the synthetic public demo and retain its production build guard.
 
-Use Node 24.22 LTS, Fastify, and SQLite for this single-process administration service. This service now includes invitation-only Admin/Customer identity and an assigned-project customer landing page. Private chat storage, generation, usage/billing and the customer PostgreSQL ownership model remain separate milestones. Do not claim this identity foundation completes the customer runtime or GDPR compliance.
+The customer-workspace plan approved on 18 October moves production to Node 24.22 LTS, Fastify and PostgreSQL 18 for accounts, assignments and private history. SQLite remains only for legacy behavior fixtures and verified import. Production must fail closed without PostgreSQL, never fall back to SQLite. Use separate ai_control and ai_chat roles; neither may own tables, be a superuser, inherit ai_owner or bypass row policies. ai_migrator is operator-only. Pin customer/project/prompt versions and keep application Admins out of unshared chats. Live AI, sharing, usage/billing and broader GDPR release requirements remain separate milestones.
+
+Serve the real bilingual customer workspace at /, administration at /backoffice/ and the synthetic demo at /demo/. Keep the approved monochrome option 1 layout. Customer drafts stay in memory only; clear state on sign-out/session expiry and ignore responses from a previous account/project. Search titles only. Encrypt titles and bodies, and do not add simulated assistant replies to persistent chats.
 
 Keep the approved black/white option 1 design. All actual keys and prompt contents are server records, never fixtures. Never return API keys, password hashes, MFA secrets outside initial local owner enrollment or recipient-authorized invitation enrollment, or raw provider failures. API keys are entered by the owner through the authenticated UI; do not copy keys from chat into tools or source files.
 

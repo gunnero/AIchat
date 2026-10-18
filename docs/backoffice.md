@@ -1,3 +1,5 @@
+> Current customer-workspace operations use PostgreSQL 18 and the root customer app. Follow [the current workspace and recovery runbook](customer-workspace.md). The SQLite/root-demo deployment sections below are historical; do not use their old rollback procedure after PostgreSQL accepts writes.
+
 # Persistent administrator backoffice
 
 18 October 2026. The administrator application in `backoffice/` is a separate service from the synthetic customer demo in `app/`. The approved monochrome design is retained. No existing demo fixtures are migrated into the real database.

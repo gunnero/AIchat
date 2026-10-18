@@ -60,3 +60,29 @@ export function transaction(db, fn) {
     throw error;
   }
 }
+
+// Asynchronous production adapter; SQLite remains solely for migration/tests.
+const queues = new WeakMap();
+export async function asyncTransaction(db, fn) {
+  if (db.dialect === "postgres") return db.transaction(fn);
+  const before = queues.get(db) || Promise.resolve();
+  let release;
+  queues.set(
+    db,
+    new Promise((resolve) => {
+      release = resolve;
+    }),
+  );
+  await before;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = await fn();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  } finally {
+    release();
+  }
+}
