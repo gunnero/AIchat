@@ -2,7 +2,7 @@
 
 [Live GitHub roadmap](https://github.com/gunnero/AIchat/issues/1) · [Milestones](https://github.com/gunnero/AIchat/milestones)
 
-This file is a link index. GitHub Issues is the source of truth for current status. All issues were created open; no implementation is represented as complete.
+This file is a link index. GitHub Issues is the source of truth for current status. The first batch (AK-001–AK-009) is implemented and ready for review in [PR #60](https://github.com/gunnero/AIchat/pull/60). GitHub issues remain open until the implementation is merged. Later milestones are still planned.
 
 First build batch: AK-001–AK-009. Prepare AK-010–AK-011 alongside it, then measure the synthetic-data AI pilot in AK-012–AK-014. Privacy and supplier decisions begin as soon as their inputs are available.
 
@@ -128,3 +128,14 @@ Optional work outside the first release; schedule only if needed.
 | --- | --- | --- |
 | [AK-057 — Add private customer document uploads if required](https://github.com/gunnero/AIchat/issues/58) | P2 | AK-056 |
 | [AK-058 — Automate entitlements from the external payment system](https://github.com/gunnero/AIchat/issues/59) | P2 | AK-056 |
+
+## Meeting update — projects and prompt assignments
+
+Added after the client meeting on 18 October 2026. AK-059 is the synthetic prototype; AK-060–062 are production work. Existing related tasks also include the new project scope.
+
+| Task | Priority | Dependencies |
+| --- | --- | --- |
+| [AK-059 — Prototype customer project assignments and per-project prompts](https://github.com/gunnero/AIchat/issues/61) | P1 | AK-009 |
+| [AK-060 — Enforce project memberships and pinned conversation routing](https://github.com/gunnero/AIchat/issues/62) | P0 | AK-015, AK-016, AK-020, AK-023 |
+| [AK-061 — Import and version project prompts in the application](https://github.com/gunnero/AIchat/issues/63) | P0 | AK-010, AK-011, AK-015 |
+| [AK-062 — Verify project isolation and reassignment end to end](https://github.com/gunnero/AIchat/issues/64) | P0 | AK-060, AK-061, AK-027, AK-034, AK-035 |
