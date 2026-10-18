@@ -25,3 +25,11 @@ AK-060–062 add server-enforced project memberships, portable prompt source imp
 ## Production guard
 
 The build:production command must fail with an explicit explanation. The regular build explicitly uses demo mode and displays a demo label. Unsupported local VITE_APP_MODE values display a configuration error. No production fallback silently routes customer prompts into mock output.
+# Persistent backoffice checks — 18 October 2026
+
+`backoffice/` has 18 server behavior tests on Node 24.22.0, with isolated SQLite databases and synthetic credentials. Coverage includes unauthenticated reads/writes, protected owner enrollment and bootstrap secret, CSRF/origin enforcement, password/TOTP replay, failed-login limits, session expiry/logout, password-change revocation, persistence after reopening the database, encryption/masked metadata, failed/successful/stale key rotation, fresh MFA, pause, cross-project assignment rollback, immutable prompt versions, authenticated encryption context, logout during a pending credential change, backup restore and provider-probe boundaries. TypeScript/build and a runtime dependency advisory check also pass.
+
+Browser QA exercised actual server routes on a local synthetic instance: sign-in, connection save with fake provider, project connection, prompt version creation and customer assignment. Desktop 1440×1000 and mobile 390×844 were inspected; mobile document width stayed 390px and its edit dialog fit within 352px. Local browser console warnings/errors were empty. Screenshots show local fictional records, never production credentials: [overview](screenshots/backoffice-overview.png), [connections](screenshots/backoffice-connections.png), [mobile](screenshots/backoffice-mobile.png).
+
+The original app's 25 behavior tests and four worker checks remain passing. No test makes a live OpenAI request or measures genuine AI speed. The first owner's real credential enrollment and live provider-key check are owner actions after deployment. Customer identity, chat isolation, usage concurrency and the broader launch/security suite remain later roadmap work.
+

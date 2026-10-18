@@ -1,6 +1,6 @@
 # AI - Kundetypeassistent
 
-Planning baseline, 16 October 2026. Canonical task status lives in the [GitHub roadmap](https://github.com/gunnero/AIchat/issues/1) for `gunnero/AIchat`. The [local task index](TASKS.md) links to all 62 tasks.
+Planning baseline, 16 October 2026. Canonical task status lives in the [GitHub roadmap](https://github.com/gunnero/AIchat/issues/1) for `gunnero/AIchat`. The [local task index](TASKS.md) links to all 67 tasks.
 
 ## Agreed direction
 
@@ -53,3 +53,6 @@ The proposals contain the supporting OpenAI, EDPB and OWASP references. Recheck 
 ## Meeting update — projects and prompts
 
 AK-059 implements the synthetic assignment/project-switching prototype. AK-060–062 add the production memberships, portable prompt import and isolation verification. See [the specification](../docs/projects-and-prompts.md). Existing schema, authorization, history, usage, gateway and workflow tasks now include this scope. The demo retains a shared per-customer allowance across projects; per-project charging remains an open business decision.
+
+
+Administrator build update, 18 October 2026: AK-063–067 add a real persistent backoffice, staff password/TOTP authentication, encrypted client-owned provider connections, persistent customer/project/prompt management, isolated hosting, and the remaining staff/recovery work. The customer-facing demo stays synthetic. See [backoffice architecture and boundaries](../docs/backoffice.md). The structured backlog now contains 67 tasks.

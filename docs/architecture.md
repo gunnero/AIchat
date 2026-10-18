@@ -2,6 +2,8 @@
 
 Status: accepted for the first prototype batch; supplier provisioning and production controls remain separate tasks. Date: 16 October 2026.
 
+**18 October, administrator-service decision:** `backoffice/` now implements the first persistent staff service using Fastify, Node 24.22 LTS and single-process SQLite on jig, with password/TOTP staff authentication and encrypted provider credentials. This scoped exception avoids a new shared database/identity supplier for the administrator build. It does not replace the planned PostgreSQL/managed-identity evaluation for the customer application. See [the detailed decision and operating boundary](backoffice.md). The implementation/status table below records the original customer-app baseline and must not be read as the status of the separate backoffice.
+
 Updated 18 October 2026: [projects and prompts](projects-and-prompts.md) adds multiple projects per customer, a specific prompt version per assignment, private customer/project history and an OpenAI source-import/migration plan. The demo implements these interactions in memory; the server/database controls remain planned.
 
 ## Decision

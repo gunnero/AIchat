@@ -2,6 +2,8 @@
 
 The baseline is [PROJECT.md](../planning/PROJECT.md). Unresolved inputs are not treated as approved.
 
+18 October follow-up: the user requested a real administrator backoffice first, with client-owned OpenAI keys added later through its UI. [Backoffice architecture](backoffice.md) records the persistent administration phase and its narrower staff-authentication/storage decisions. The customer launch decisions below remain open where marked.
+
 | Topic | Current decision | Remaining input / task |
 | --- | --- | --- |
 | Audience | Individual customers; Danish UI. | Account count and concurrency, AK-001/014. |
