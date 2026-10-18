@@ -981,3 +981,9 @@ input[readonly] {
     left: 0;
   }
 }
+
+.security-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}

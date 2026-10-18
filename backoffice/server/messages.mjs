@@ -1,5 +1,14 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Bekræft ændringen": "Confirm this change",
+  "Åbn din authenticator-app, og indtast den 6-cifrede kode for at gennemføre ændringen.":
+    "Open your authenticator app and enter the 6-digit code to finish this change.",
+  "Dine indtastninger er bevaret, mens du gør dette.":
+    "Your entries are kept while you do this.",
+  Sikkerhedskode: "Security code",
+  "Bekræft og fortsæt": "Confirm and continue",
+  Tilbage: "Back",
+
   "Prøv igen": "Try again",
   "Åbn samtaler": "Open conversations",
   "Samtalen og alle dens beskeder slettes. Handlingen kan ikke fortrydes.":
@@ -109,8 +118,8 @@ export const english = {
   "Opret og tildel kunder": "Create and assign customers",
   "Vælg adgang og den rette prompt til hver kunde.":
     "Choose access and the right prompt for each customer.",
-  "Konti aktiveres via invitation med adgangskode og obligatorisk 2FA. Live AI-chat, privat historik og betaling er endnu ikke tilsluttet.":
-    "Accounts are activated by invitation with a password and required 2FA. Live AI chat, private history and payments are not yet connected.",
+  "Kunder får adgang via en invitation. Deres samtaler er private. AI-svar er endnu ikke aktiveret.":
+    "Customers join by invitation. Their conversations are private. AI replies are not enabled yet.",
   "Dine kunder": "Your customers",
   Kunde: "Customer",
   Svarramme: "Response allowance",
@@ -164,8 +173,8 @@ export const english = {
   Tidspunkt: "Time",
   Administrator: "Admin",
   "Ingen aktiviteter endnu.": "No activity yet.",
-  "Adgang med authenticator · Private kundesamtaler indgår ikke":
-    "Authenticator required · Private customer conversations are excluded",
+  "Sikker adgang · Kundernes samtaler er private":
+    "Secure access · Customers’ conversations are private",
   "Administrér Admin": "Manage Admin",
   "Administrér kunde": "Manage customer",
   "Tilføj kunde": "Add customer",

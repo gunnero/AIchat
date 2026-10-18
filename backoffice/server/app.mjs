@@ -67,13 +67,14 @@ const connectionInput = z
   })
   .strict();
 class Problem extends Error {
-  constructor(status, message) {
+  constructor(status, message, code) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
-const fail = (status, message) => {
-  throw new Problem(status, message);
+const fail = (status, message, code) => {
+  throw new Problem(status, message, code);
 };
 export async function buildServer({
   dbPath = ":memory:",
@@ -196,7 +197,11 @@ export async function buildServer({
   };
   const fresh = (r) => {
     if (clock() - r.session.mfa_at > 10 * 60 * 1000)
-      fail(403, "Bekræft en ny kode fra din authenticator først.");
+      fail(
+        403,
+        "Bekræft en ny kode fra din authenticator først.",
+        "reauth_required",
+      );
   };
   app.addHook("onRequest", async (r, reply) => {
     reply.headers({
@@ -325,7 +330,12 @@ export async function buildServer({
   });
   app.setErrorHandler((error, r, reply) => {
     if (error instanceof Problem)
-      return reply.code(error.status).send({ message: error.message });
+      return reply
+        .code(error.status)
+        .send({
+          message: error.message,
+          ...(error.code ? { code: error.code } : {}),
+        });
     if (error instanceof z.ZodError)
       return reply.code(400).send({
         message:
@@ -568,7 +578,7 @@ export async function buildServer({
         .prepare("SELECT * FROM admins WHERE id=?")
         .get(r.adminId);
       if (!(await consumeOtp(admin, value)))
-        fail(401, "Brug en ny kode fra din authenticator.");
+        fail(401, "Brug en ny kode fra din authenticator.", "invalid_otp");
       await db
         .prepare("UPDATE sessions SET mfa_at=? WHERE hash=?")
         .run(clock(), r.session.hash);

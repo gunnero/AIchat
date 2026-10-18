@@ -12,6 +12,7 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
@@ -42,7 +43,8 @@ export async function api<T>(
   const data = await response.json();
   if (
     response.status === 401 &&
-    !["/auth/login", "/auth/reauth"].includes(path)
+    path !== "/auth/login" &&
+    !(path === "/auth/reauth" && data.code === "invalid_otp")
   )
     window.dispatchEvent(new Event("session-expired"));
   if (!response.ok)
@@ -51,6 +53,7 @@ export async function api<T>(
       data.messageKey ||
         data.message ||
         t("Handlingen kunne ikke gennemføres."),
+      data.code,
     );
   return data;
 }

@@ -405,7 +405,24 @@ test("fresh MFA is required after ten minutes for API credential changes", async
   const f = await fixture(t);
   await f.owner();
   f.advance(11 * 60 * 1000);
-  assert.equal((await f.req("/connections", "POST", {})).statusCode, 403);
+  const challenge = await f.req(
+    "/connections",
+    "POST",
+    {},
+    { "accept-language": "en" },
+  );
+  assert.equal(challenge.statusCode, 403);
+  assert.equal(challenge.json().code, "reauth_required");
+  const valid = otp(f.secret).generate({ timestamp: f.now });
+  const invalid = String((Number(valid[0]) + 1) % 10) + valid.slice(1);
+  const rejected = await f.req("/auth/reauth", "POST", { code: invalid });
+  assert.equal(rejected.statusCode, 401);
+  assert.equal(rejected.json().code, "invalid_otp");
+  assert.equal((await f.req("/auth/session")).statusCode, 200);
+  assert.equal(
+    (await f.req("/connections", "POST", {})).json().code,
+    "reauth_required",
+  );
   assert.equal(
     (
       await f.req("/auth/reauth", "POST", {
@@ -414,7 +431,22 @@ test("fresh MFA is required after ten minutes for API credential changes", async
     ).statusCode,
     200,
   );
+  const replay = await f.req("/auth/reauth", "POST", { code: valid });
+  assert.equal(replay.statusCode, 401);
+  assert.equal(replay.json().code, "invalid_otp");
   await f.connection();
+  const csrfDenied = await f.req(
+    "/connections",
+    "POST",
+    {},
+    { "x-csrf-token": "invalid" },
+  );
+  assert.equal(csrfDenied.statusCode, 403);
+  assert.equal(csrfDenied.json().code, undefined);
+  f.advance(31 * 60 * 1000);
+  const expired = await f.req("/auth/reauth", "POST", { code: valid });
+  assert.equal(expired.statusCode, 401);
+  assert.equal(expired.json().code, undefined);
 });
 test("paused connections are not checked, and pausing does not delete project links", async (t) => {
   let calls = 0;

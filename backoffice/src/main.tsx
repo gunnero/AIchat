@@ -1,8 +1,10 @@
 import { api, ApiError, type Session } from "./client";
 import { CustomerWorkspace } from "./CustomerWorkspace";
+import { SecurityConfirmation } from "./SecurityConfirmation";
 import { t, getLanguage, useLanguage, LanguagePicker } from "./i18n";
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type FormEvent,
@@ -158,6 +160,16 @@ export function App() {
       history.replaceState(null, "", location.pathname + location.search);
   }, [inviteToken]);
   const authEpoch = useRef(0);
+  const activeMutation = useRef<symbol | null>(null);
+  const pendingVerification = useRef<{
+    epoch: number;
+    verifying: boolean;
+    resolve: (confirmed: boolean) => void;
+  } | null>(null);
+  const [verification, setVerification] = useState<{
+    busy: boolean;
+    error: string;
+  } | null>(null);
   const [session, setSession] = useState<Session | null>(null),
     [loading, setLoading] = useState(true),
     [tab, setTab] = useState("overview");
@@ -172,23 +184,44 @@ export function App() {
   const backoffice = location.pathname.startsWith("/backoffice");
   const setup =
     backoffice && new URLSearchParams(location.search).get("setup") === "1";
+  function cancelVerification() {
+    const pending = pendingVerification.current;
+    pendingVerification.current = null;
+    setVerification(null);
+    pending?.resolve(false);
+  }
+  function clearSession() {
+    authEpoch.current++;
+    activeMutation.current = null;
+    cancelVerification();
+    setSession(null);
+    setData(empty);
+    setModal(null);
+    setBusy(false);
+    setError("");
+    setNotice("");
+  }
+  useEffect(
+    () => () => {
+      authEpoch.current++;
+      activeMutation.current = null;
+      const pending = pendingVerification.current;
+      pendingVerification.current = null;
+      pending?.resolve(false);
+    },
+    [],
+  );
   useEffect(() => {
     document.title = "AI · Kundetypeassistent";
-    const clear = () => {
-      authEpoch.current++;
-      setSession(null);
-      setData(empty);
-      setModal(null);
-    };
     const restore = (e: PageTransitionEvent) => {
       if (e.persisted) location.reload();
     };
-    window.addEventListener("session-expired", clear);
-    const pageHide = () => flushSync(clear);
+    window.addEventListener("session-expired", clearSession);
+    const pageHide = () => flushSync(clearSession);
     window.addEventListener("pagehide", pageHide);
     window.addEventListener("pageshow", restore);
     return () => {
-      window.removeEventListener("session-expired", clear);
+      window.removeEventListener("session-expired", clearSession);
       window.removeEventListener("pagehide", pageHide);
       window.removeEventListener("pageshow", restore);
     };
@@ -212,7 +245,7 @@ export function App() {
       mounted = false;
     };
   }, [setup, inviteToken]);
-  async function reload() {
+  async function reload(epoch = authEpoch.current) {
     const [customers, connections, projects, prompts, audit, staff] =
       await Promise.all([
         api<Customer[]>("/customers"),
@@ -222,16 +255,16 @@ export function App() {
         api<Audit[]>("/audit"),
         api<Account[]>("/staff"),
       ]);
-    setData({ customers, connections, projects, prompts, audit, staff });
+    if (epoch === authEpoch.current)
+      setData({ customers, connections, projects, prompts, audit, staff });
   }
   useEffect(() => {
+    const epoch = authEpoch.current;
     if (session?.role === "Admin")
-      reload().catch((e) => {
+      reload(epoch).catch((e) => {
+        if (epoch !== authEpoch.current) return;
         setError(e.message);
-        if (e.status === 401) {
-          setSession(null);
-          setData(empty);
-        }
+        if (e.status === 401) clearSession();
       });
   }, [session]);
   async function mutate(
@@ -240,16 +273,40 @@ export function App() {
     method = "POST",
     message = t("Ændringerne er gemt."),
   ) {
+    if (activeMutation.current) return false;
+    const operation = Symbol(),
+      epoch = authEpoch.current;
+    activeMutation.current = operation;
+    const current = () =>
+      epoch === authEpoch.current && activeMutation.current === operation;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const result = await api<{
+      type Result = {
         message?: string;
         messageKey?: string;
         invitation?: string;
-      }>(path, method, body, session?.csrf);
-      await reload();
+      };
+      let result: Result;
+      try {
+        result = await api<Result>(path, method, body, session?.csrf);
+      } catch (e) {
+        if (!current()) return false;
+        const err = e as ApiError;
+        if (err.status !== 403 || err.code !== "reauth_required") throw e;
+        setBusy(false);
+        const confirmed = await new Promise<boolean>((resolve) => {
+          pendingVerification.current = { epoch, verifying: false, resolve };
+          setVerification({ busy: false, error: "" });
+        });
+        if (!confirmed || !current()) return false;
+        setBusy(true);
+        result = await api<Result>(path, method, body, session?.csrf);
+      }
+      if (!current()) return false;
+      await reload(epoch);
+      if (!current()) return false;
       setNotice(
         result.invitation === "failed"
           ? t(
@@ -264,16 +321,46 @@ export function App() {
       setModal(null);
       return true;
     } catch (e) {
+      if (!current()) return false;
       const err = e as ApiError;
       setError(err.message);
-      if (err.status === 401 && path !== "/auth/reauth") {
-        setSession(null);
-        setData(empty);
-        setModal(null);
-      }
+      if (err.status === 401) clearSession();
       return false;
     } finally {
-      setBusy(false);
+      if (activeMutation.current === operation) {
+        activeMutation.current = null;
+        setBusy(false);
+      }
+    }
+  }
+  async function confirmVerification(code: string) {
+    const pending = pendingVerification.current;
+    if (!pending || pending.verifying) return;
+    pending.verifying = true;
+    setVerification({ busy: true, error: "" });
+    try {
+      await api("/auth/reauth", "POST", { code }, session?.csrf);
+      if (
+        pendingVerification.current !== pending ||
+        pending.epoch !== authEpoch.current
+      )
+        return;
+      pendingVerification.current = null;
+      setVerification(null);
+      pending.resolve(true);
+    } catch (e) {
+      if (
+        pendingVerification.current !== pending ||
+        pending.epoch !== authEpoch.current
+      )
+        return;
+      const err = e as ApiError;
+      if (err.status === 401 && err.code !== "invalid_otp") {
+        clearSession();
+        return;
+      }
+      pending.verifying = false;
+      setVerification({ busy: false, error: err.message });
     }
   }
   if (inviteToken) return <Registration token={inviteToken} />;
@@ -294,10 +381,7 @@ export function App() {
       <CustomerWorkspace
         key={session.id}
         session={session}
-        logout={() => {
-          setSession(null);
-          setData(empty);
-        }}
+        logout={clearSession}
       />
     );
   }
@@ -346,8 +430,7 @@ export function App() {
               setBusy(true);
               try {
                 await api("/auth/logout", "POST", {}, session.csrf);
-                setSession(null);
-                setData(empty);
+                clearSession();
               } catch (e) {
                 setError((e as Error).message);
               } finally {
@@ -367,13 +450,6 @@ export function App() {
             <p className="eyebrow">AI · KUNDETYPEASSISTENT</p>
             <h1>{selected.label}</h1>
           </div>
-          <button
-            className="button secondary"
-            onClick={() => setModal({ type: "reauth" })}
-          >
-            <ShieldCheckIcon size={19} />
-            {t("Bekræft adgang")}{" "}
-          </button>
         </header>
         <main>
           <div className="intro">
@@ -509,7 +585,7 @@ export function App() {
               </section>
               <p className="footnote">
                 {t(
-                  "Konti aktiveres via invitation med adgangskode og obligatorisk 2FA. Live AI-chat, privat historik og betaling er endnu ikke tilsluttet.",
+                  "Kunder får adgang via en invitation. Deres samtaler er private. AI-svar er endnu ikke aktiveret.",
                 )}{" "}
               </p>
             </>
@@ -844,195 +920,182 @@ export function App() {
         </main>
         <footer>
           <ShieldCheckIcon size={17} />
-          {t(
-            "Adgang med authenticator · Private kundesamtaler indgår ikke",
-          )}{" "}
+          {t("Sikker adgang · Kundernes samtaler er private")}{" "}
         </footer>
       </div>
-      {modal && (
+      {(modal || verification) && (
         <Dialog
           title={
-            modal.type === "staff"
-              ? t("Administrér Admin")
-              : modal.type === "customer"
-                ? modal.value
-                  ? t("Administrér kunde")
-                  : t("Tilføj kunde")
-                : modal.type === "project"
-                  ? modal.value
-                    ? t("Redigér projekt")
-                    : t("Tilføj projekt")
-                  : modal.type === "connection"
-                    ? t("Tilføj API-forbindelse")
-                    : modal.type === "rotate"
-                      ? t("Udskift API-nøgle")
-                      : modal.type === "password"
-                        ? t("Skift adgangskode")
-                        : modal.type === "reauth"
-                          ? t("Bekræft din adgang")
-                          : t("Prompt og instruktioner")
+            verification
+              ? t("Bekræft ændringen")
+              : modal
+                ? modal.type === "staff"
+                  ? t("Administrér Admin")
+                  : modal.type === "customer"
+                    ? modal.value
+                      ? t("Administrér kunde")
+                      : t("Tilføj kunde")
+                    : modal.type === "project"
+                      ? modal.value
+                        ? t("Redigér projekt")
+                        : t("Tilføj projekt")
+                      : modal.type === "connection"
+                        ? t("Tilføj API-forbindelse")
+                        : modal.type === "rotate"
+                          ? t("Udskift API-nøgle")
+                          : modal.type === "password"
+                            ? t("Skift adgangskode")
+                            : t("Prompt og instruktioner")
+                : ""
           }
           onClose={() => {
-            if (!busy) {
+            if (verification) cancelVerification();
+            else if (!busy) {
               setModal(null);
               setError("");
             }
           }}
         >
-          {error && (
-            <p className="alert" role="alert">
-              {t(error)}
-            </p>
-          )}
-          {modal.type === "staff" && (
-            <StaffForm
-              value={modal.value as Account | undefined}
-              busy={busy}
-              save={(id, v) =>
-                mutate("/staff" + (id ? "/" + id : ""), v, id ? "PUT" : "POST")
-              }
+          {verification && (
+            <SecurityConfirmation
+              busy={verification.busy}
+              error={verification.error}
+              hasForm={!!modal}
+              confirm={confirmVerification}
+              cancel={cancelVerification}
             />
           )}
-          {modal.type === "customer" && (
-            <CustomerForm
-              value={modal.value as Customer | undefined}
-              data={data}
-              busy={busy}
-              save={(id, v) =>
-                mutate(
-                  "/customers" + (id ? "/" + id : ""),
-                  v,
-                  id ? "PUT" : "POST",
-                )
-              }
-            />
-          )}
-          {modal.type === "project" && (
-            <ProjectForm
-              value={modal.value as Project | undefined}
-              data={data}
-              busy={busy}
-              save={(id, v) =>
-                mutate(
-                  "/projects" + (id ? "/" + id : ""),
-                  v,
-                  id ? "PUT" : "POST",
-                )
-              }
-            />
-          )}
-          {(modal.type === "connection" || modal.type === "rotate") && (
-            <ConnectionForm
-              value={modal.value as Connection | undefined}
-              busy={busy}
-              save={(v) =>
-                modal.type === "rotate"
-                  ? mutate("/connections/" + modal.value!.id + "/rotate", v)
-                  : mutate("/connections", v)
-              }
-            />
-          )}
-          {(modal.type === "prompt" || modal.type === "version") && (
-            <PromptForm
-              key={modal.value!.id}
-              project={
-                modal.type === "prompt" ? (modal.value as Project) : undefined
-              }
-              version={
-                modal.type === "version" ? (modal.value as Prompt) : undefined
-              }
-              busy={busy}
-              save={(v) => mutate("/prompts", v)}
-            />
-          )}
-          {modal.type === "reauth" && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const f = new FormData(e.currentTarget);
-                mutate(
-                  "/auth/reauth",
-                  { code: f.get("code") },
-                  "POST",
-                  t("Adgangen er bekræftet i ti minutter."),
-                );
-              }}
-            >
-              <p>
-                {t(
-                  "Brug en ny kode fra din authenticator før ændringer af API-nøgler.",
-                )}{" "}
-              </p>
-              <label>
-                {t("Authenticator-kode")}{" "}
-                <input
-                  name="code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  required
-                  autoFocus
+          {modal && (
+            <div hidden={!!verification}>
+              {error && (
+                <p className="alert" role="alert">
+                  {t(error)}
+                </p>
+              )}
+              {modal.type === "staff" && (
+                <StaffForm
+                  value={modal.value as Account | undefined}
+                  busy={busy}
+                  save={(id, v) =>
+                    mutate(
+                      "/staff" + (id ? "/" + id : ""),
+                      v,
+                      id ? "PUT" : "POST",
+                    )
+                  }
                 />
-              </label>
-              <Save busy={busy} label={t("Bekræft adgang")} />
-            </form>
-          )}
-          {modal.type === "password" && (
-            <form
-              onSubmit={async (e) => {
-                const f = values(e);
-                setBusy(true);
-                setError("");
-                try {
-                  await api("/auth/password", "POST", f, session.csrf);
-                  setModal(null);
-                  setSession(null);
-                  setData(empty);
-                } catch (e) {
-                  setError((e as Error).message);
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              <p>
-                {t("Alle dine aktive sessioner afsluttes efter ændringen.")}
-              </p>
-              <label>
-                {t("Nuværende adgangskode")}{" "}
-                <input
-                  name="currentPassword"
-                  type="password"
-                  autoComplete="current-password"
-                  maxLength={256}
-                  required
+              )}
+              {modal.type === "customer" && (
+                <CustomerForm
+                  value={modal.value as Customer | undefined}
+                  data={data}
+                  busy={busy}
+                  save={(id, v) =>
+                    mutate(
+                      "/customers" + (id ? "/" + id : ""),
+                      v,
+                      id ? "PUT" : "POST",
+                    )
+                  }
                 />
-              </label>
-              <label>
-                {t("Ny adgangskode · mindst 14 tegn")}{" "}
-                <input
-                  name="newPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  minLength={14}
-                  maxLength={256}
-                  required
+              )}
+              {modal.type === "project" && (
+                <ProjectForm
+                  value={modal.value as Project | undefined}
+                  data={data}
+                  busy={busy}
+                  save={(id, v) =>
+                    mutate(
+                      "/projects" + (id ? "/" + id : ""),
+                      v,
+                      id ? "PUT" : "POST",
+                    )
+                  }
                 />
-              </label>
-              <label>
-                {t("Ny authenticator-kode")}{" "}
-                <input
-                  name="code"
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  required
+              )}
+              {(modal.type === "connection" || modal.type === "rotate") && (
+                <ConnectionForm
+                  value={modal.value as Connection | undefined}
+                  busy={busy}
+                  save={(v) =>
+                    modal.type === "rotate"
+                      ? mutate("/connections/" + modal.value!.id + "/rotate", v)
+                      : mutate("/connections", v)
+                  }
                 />
-              </label>
-              <Save busy={busy} label={t("Skift adgangskode")} />
-            </form>
+              )}
+              {(modal.type === "prompt" || modal.type === "version") && (
+                <PromptForm
+                  key={modal.value!.id}
+                  project={
+                    modal.type === "prompt"
+                      ? (modal.value as Project)
+                      : undefined
+                  }
+                  version={
+                    modal.type === "version"
+                      ? (modal.value as Prompt)
+                      : undefined
+                  }
+                  busy={busy}
+                  save={(v) => mutate("/prompts", v)}
+                />
+              )}
+              {modal.type === "password" && (
+                <form
+                  onSubmit={async (e) => {
+                    const f = values(e);
+                    setBusy(true);
+                    setError("");
+                    try {
+                      await api("/auth/password", "POST", f, session.csrf);
+                      clearSession();
+                    } catch (e) {
+                      setError((e as Error).message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  <p>
+                    {t("Alle dine aktive sessioner afsluttes efter ændringen.")}
+                  </p>
+                  <label>
+                    {t("Nuværende adgangskode")}{" "}
+                    <input
+                      name="currentPassword"
+                      type="password"
+                      autoComplete="current-password"
+                      maxLength={256}
+                      required
+                    />
+                  </label>
+                  <label>
+                    {t("Ny adgangskode · mindst 14 tegn")}{" "}
+                    <input
+                      name="newPassword"
+                      type="password"
+                      autoComplete="new-password"
+                      minLength={14}
+                      maxLength={256}
+                      required
+                    />
+                  </label>
+                  <label>
+                    {t("Ny authenticator-kode")}{" "}
+                    <input
+                      name="code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      pattern="[0-9]{6}"
+                      maxLength={6}
+                      required
+                    />
+                  </label>
+                  <Save busy={busy} label={t("Skift adgangskode")} />
+                </form>
+              )}
+            </div>
           )}
         </Dialog>
       )}
@@ -1287,22 +1350,47 @@ function Dialog({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const previousFocus = useRef(document.activeElement as HTMLElement | null);
+  useEffect(() => {
+    const fields = ref.current?.querySelectorAll<HTMLElement>(
+      'input:not([disabled]):not([readonly]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]):not([readonly])',
+    );
+    Array.from(fields || [])
+      .find((field) => !field.closest("[hidden]"))
+      ?.focus();
+  }, [title]);
   useEffect(() => {
     const el = ref.current!;
+    const fields =
+      'input:not([disabled]):not([readonly]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]):not([readonly])';
     el.showModal();
-    return () => el.close();
+    el.querySelector<HTMLElement>(fields)?.focus();
+    return () => {
+      el.close();
+      if (
+        previousFocus.current?.isConnected &&
+        previousFocus.current !== document.body
+      )
+        previousFocus.current.focus();
+      else
+        Array.from(document.querySelectorAll<HTMLDialogElement>("dialog[open]"))
+          .at(-1)
+          ?.querySelector<HTMLElement>(fields)
+          ?.focus();
+    };
   }, []);
   return (
     <dialog
       ref={ref}
-      aria-labelledby="dialog-title"
+      aria-labelledby={titleId}
       onCancel={(e) => {
         e.preventDefault();
         onClose();
       }}
     >
       <div className="dialog-heading">
-        <h2 id="dialog-title">{title}</h2>
+        <h2 id={titleId}>{title}</h2>
         <button aria-label={t("Luk")} className="icon-button" onClick={onClose}>
           <XIcon size={24} />
         </button>

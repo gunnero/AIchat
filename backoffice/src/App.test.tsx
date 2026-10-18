@@ -5,11 +5,13 @@ import {
   render,
   screen,
   within,
+  waitFor,
+  act,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import { App } from "./main";
-import { api, type Session } from "./client";
+import { api, ApiError, type Session } from "./client";
 import { setLanguage, t } from "./i18n";
 
 vi.mock("./client", async (original) => ({
@@ -137,3 +139,250 @@ test.each(["session-expired", "pagehide"])(
     expect(screen.getByLabelText(t("Navn på forbindelsen"))).toHaveValue("");
   },
 );
+
+function protectedSave(
+  verify: (code: string) => Promise<void> = async () => {},
+) {
+  let verified = false;
+  const writes: unknown[] = [];
+  mocked.mockImplementation(async (path, method = "GET", body) => {
+    if (path === "/auth/session" || path === "/auth/login") return session;
+    if (method === "GET") return [];
+    if (path === "/auth/reauth") {
+      await verify((body as { code: string }).code);
+      verified = true;
+      return { ok: true };
+    }
+    if (path === "/connections" && method === "POST") {
+      writes.push(body);
+      if (!verified)
+        throw new ApiError(403, "Fresh code needed", "reauth_required");
+      return { id: "synthetic-connection" };
+    }
+    throw new Error("Unexpected dialog request");
+  });
+  return writes;
+}
+const securityDialog = () =>
+  screen.findByRole("dialog", { name: t("Bekræft ændringen") });
+async function submitConnection(
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+) {
+  await user.click(
+    within(dialog).getByRole("button", { name: t("Kontrollér og gem") }),
+  );
+}
+async function confirmCode(
+  user: ReturnType<typeof userEvent.setup>,
+  code: string,
+) {
+  const dialog = await securityDialog();
+  await user.type(within(dialog).getByLabelText(t("Sikkerhedskode")), code);
+  await user.click(
+    within(dialog).getByRole("button", { name: t("Bekræft og fortsæt") }),
+  );
+}
+
+test.each(["en", "da"] as const)(
+  "protected saves ask for a code in context and continue the same change after a valid code (%s)",
+  async (language) => {
+    setLanguage(language);
+    const writes = protectedSave(async (code) => {
+      if (code !== "222222")
+        throw new ApiError(
+          401,
+          "Brug en ny kode fra din authenticator.",
+          "invalid_otp",
+        );
+    });
+    render(<App />);
+    const { user, dialog } = await openConnection();
+    expect(
+      screen.queryByRole("button", { name: t("Bekræft adgang") }),
+    ).not.toBeInTheDocument();
+    await submitConnection(user, dialog);
+    const security = await securityDialog();
+    expect(
+      within(security).getByText(
+        t("Dine indtastninger er bevaret, mens du gør dette."),
+      ),
+    ).toBeInTheDocument();
+    expect(within(security).getByLabelText(t("Sikkerhedskode"))).toHaveFocus();
+    expect(security).toBe(dialog);
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    await confirmCode(user, "111111");
+    expect(await within(security).findByRole("alert")).toHaveTextContent(
+      t("Brug en ny kode fra din authenticator."),
+    );
+    expect(writes).toHaveLength(1);
+    expect(within(dialog).getByLabelText(t("API-nøgle"))).toHaveValue(
+      syntheticKey,
+    );
+    expect(within(security).getByLabelText(t("Sikkerhedskode"))).toHaveValue(
+      "",
+    );
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
+    fireEvent(document, new Event("visibilitychange"));
+    visibility.mockReturnValue("visible");
+    fireEvent(document, new Event("visibilitychange"));
+    expect(await securityDialog()).toBe(security);
+    await confirmCode(user, "222222");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual(writes[0]);
+    expect(
+      mocked.mock.calls.filter(([path]) => path === "/auth/reauth"),
+    ).toHaveLength(2);
+  },
+);
+
+test("a save with recent verification needs no extra step, and other forbidden errors do not start verification", async () => {
+  let forbidden = false;
+  mocked.mockImplementation(async (path, method = "GET") => {
+    if (path === "/auth/session") return session;
+    if (method === "GET") return [];
+    if (path === "/connections" && !forbidden)
+      return { id: "synthetic-connection" };
+    throw new ApiError(403, "Access denied");
+  });
+  render(<App />);
+  let form = await openConnection();
+  await submitConnection(form.user, form.dialog);
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  forbidden = true;
+  form = await openConnection();
+  await submitConnection(form.user, form.dialog);
+  expect(await within(form.dialog).findByRole("alert")).toHaveTextContent(
+    "Access denied",
+  );
+  expect(
+    screen.queryByRole("dialog", { name: t("Bekræft ændringen") }),
+  ).not.toBeInTheDocument();
+  expect(mocked.mock.calls.some(([path]) => path === "/auth/reauth")).toBe(
+    false,
+  );
+});
+
+test("back keeps the form and a late verification response cannot replay a cancelled change", async () => {
+  let finish!: () => void;
+  const response = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const writes = protectedSave(() => response);
+  render(<App />);
+  const { user, dialog } = await openConnection();
+  await submitConnection(user, dialog);
+  const security = await securityDialog();
+  await confirmCode(user, "222222");
+  await user.click(
+    within(security).getByRole("button", { name: t("Tilbage") }),
+  );
+  expect(
+    screen.queryByRole("dialog", { name: t("Bekræft ændringen") }),
+  ).not.toBeInTheDocument();
+  expect(within(dialog).getByLabelText(t("API-nøgle"))).toHaveValue(
+    syntheticKey,
+  );
+  expect(within(dialog).getByLabelText(t("Navn på forbindelsen"))).toHaveValue(
+    "Synthetic connection",
+  );
+  await act(async () => {
+    finish();
+    await response;
+  });
+  expect(writes).toHaveLength(1);
+  expect(dialog).toBeInTheDocument();
+  expect(
+    within(dialog).getByRole("button", { name: t("Kontrollér og gem") }),
+  ).toBeEnabled();
+});
+
+test.each(["session-expired", "pagehide"])(
+  "%s while checking a code cancels pending changes and ignores the late response",
+  async (event) => {
+    let finish!: () => void;
+    const response = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const writes = protectedSave(() => response);
+    render(<App />);
+    const { user, dialog } = await openConnection();
+    await submitConnection(user, dialog);
+    await confirmCode(user, "222222");
+    fireEvent(window, new Event(event));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: t("Log ind") }),
+    ).toBeInTheDocument();
+    await act(async () => {
+      finish();
+      await response;
+    });
+    expect(writes).toHaveLength(1);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  },
+);
+
+test("table actions use the same confirmation and resume once without needing an open form", async () => {
+  let verified = false,
+    attempts = 0;
+  const connection = {
+    id: "synthetic-connection",
+    label: "Synthetic",
+    enabled: 1,
+    project_ref: "proj_synthetic",
+    suffix: "test",
+    revision: 1,
+    status: "ok",
+    last_checked: null,
+  };
+  mocked.mockImplementation(async (path, method = "GET") => {
+    if (path === "/auth/session") return session;
+    if (path === "/connections" && method === "GET") return [connection];
+    if (method === "GET") return [];
+    if (path === "/auth/reauth") {
+      verified = true;
+      return { ok: true };
+    }
+    if (path === "/connections/" + connection.id && method === "PUT") {
+      attempts++;
+      if (!verified)
+        throw new ApiError(403, "Fresh code needed", "reauth_required");
+      connection.enabled = 0;
+      return { ok: true };
+    }
+    throw new Error("Unexpected table action");
+  });
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(
+    await screen.findByRole("button", { name: t("API-forbindelser") }),
+  );
+  await user.click(
+    await screen.findByRole("button", { name: t("Sæt på pause") }),
+  );
+  await confirmCode(user, "222222");
+  await screen.findByRole("button", { name: t("Aktivér") });
+  expect(attempts).toBe(2);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("an expired session during code verification returns to sign-in and never resumes the saved request", async () => {
+  const writes = protectedSave(async () => {
+    throw new ApiError(401, "Log ind for at fortsætte.");
+  });
+  render(<App />);
+  const { user, dialog } = await openConnection();
+  await submitConnection(user, dialog);
+  await confirmCode(user, "222222");
+  await screen.findByRole("button", { name: t("Log ind") });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(writes).toHaveLength(1);
+});
