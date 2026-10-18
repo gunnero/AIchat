@@ -19,7 +19,6 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://ai_migrator:synthetic-ci-only@127.0.0.1:5432/ai_customer
       TEST_RESTORE_DATABASE_URL: postgresql://ai_migrator:synthetic-ci-only@127.0.0.1:5432/ai_restore
-      PG_CONTAINER: ${{ job.services.postgres.id }}
     defaults:
       run:
         working-directory: backoffice
@@ -32,6 +31,8 @@ jobs:
           cache-dependency-path: backoffice/package-lock.json
       - run: npm ci --ignore-scripts
       - name: Prepare isolated PostgreSQL roles and matching backup clients
+        env:
+          PG_CONTAINER: ${{ job.services.postgres.id }}
         run: |
           docker exec -i "$PG_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < tests/postgres-ci.sql
           cat > "$RUNNER_TEMP/pg_dump" <<'SH'
@@ -53,5 +54,6 @@ jobs:
           chmod 700 "$RUNNER_TEMP/pg_dump" "$RUNNER_TEMP/pg_restore"
           echo "PG_DUMP=$RUNNER_TEMP/pg_dump" >> "$GITHUB_ENV"
           echo "PG_RESTORE=$RUNNER_TEMP/pg_restore" >> "$GITHUB_ENV"
+          echo "PG_CONTAINER=$PG_CONTAINER" >> "$GITHUB_ENV"
       - run: npm run check
       - run: npm audit --omit=dev --audit-level=high
