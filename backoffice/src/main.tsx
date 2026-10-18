@@ -8,7 +8,6 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import {
   SquaresFourIcon,
@@ -24,10 +23,6 @@ import {
   LockKeyIcon,
   ArrowClockwiseIcon,
 } from "@phosphor-icons/react";
-import "@fontsource/source-sans-3/400.css";
-import "@fontsource/source-sans-3/600.css";
-import "@fontsource/source-sans-3/700.css";
-import "./style.css";
 
 type Invitation = { id: string; status: string; expires: number } | null;
 type Account = {
@@ -153,7 +148,7 @@ function Brand() {
     </div>
   );
 }
-function App() {
+export function App() {
   useLanguage();
   const [inviteToken] = useState(() =>
     new URLSearchParams(location.hash.slice(1)).get("invite"),
@@ -188,19 +183,14 @@ function App() {
     const restore = (e: PageTransitionEvent) => {
       if (e.persisted) location.reload();
     };
-    const hidden = () => {
-      if (document.visibilityState === "hidden") setModal(null);
-    };
     window.addEventListener("session-expired", clear);
     const pageHide = () => flushSync(clear);
     window.addEventListener("pagehide", pageHide);
     window.addEventListener("pageshow", restore);
-    document.addEventListener("visibilitychange", hidden);
     return () => {
       window.removeEventListener("session-expired", clear);
       window.removeEventListener("pagehide", pageHide);
       window.removeEventListener("pageshow", restore);
-      document.removeEventListener("visibilitychange", hidden);
     };
   }, []);
   useEffect(() => {
@@ -2050,4 +2040,3 @@ function Registration({ token }: { token: string }) {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
