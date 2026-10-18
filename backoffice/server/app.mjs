@@ -328,6 +328,14 @@ export async function buildServer({
   });
   app.addHook("onSend", async (r, reply, payload) => {
     if (
+      [200, 304].includes(reply.statusCode) &&
+      ["GET", "HEAD"].includes(r.method) &&
+      /^\/backoffice\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\.(?:js|css|woff2?)$/.test(
+        r.url.split("?")[0],
+      )
+    )
+      reply.header("Cache-Control", "public, max-age=31536000, immutable");
+    if (
       reply.statusCode < 400 &&
       r.session &&
       ![P + "/auth/logout", P + "/auth/password"].includes(r.routeOptions.url)

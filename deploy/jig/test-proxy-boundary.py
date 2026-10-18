@@ -19,7 +19,7 @@ import time
 class Backend(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         body = json.dumps(self.headers.get_all("X-Forwarded-For")).encode()
-        self.send_response(200)
+        self.send_response(404 if "missing" in self.path else 200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -74,6 +74,20 @@ with tempfile.TemporaryDirectory(prefix="ai-proxy-boundary-") as folder:
             response.read()
             connection.close()
             checks += 1
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        for path, status, policy in [
+            ("/backoffice/assets/index-abcdefgh.js", 200, "public, max-age=31536000, immutable"),
+            ("/backoffice/assets/missing-abcdefgh.js", 404, "no-store"),
+            ("/backoffice/assets/index.js", 200, "no-store"),
+            ("/", 200, "no-store"),
+        ]:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            assert response.status == status
+            assert response.getheader("Cache-Control") == policy
+            response.read()
+            checks += 1
+        connection.close()
         print(json.dumps({"proxyBoundaryChecks": checks, "status": "passed"}))
     finally:
         process.terminate()

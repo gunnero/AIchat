@@ -52,6 +52,55 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+test.each(["en", "da"] as const)(
+  "administration menu exposes every destination, closes on selection and returns focus (%s)",
+  async (language) => {
+    setLanguage(language);
+    const user = userEvent.setup();
+    render(<App />);
+    const menu = await screen.findByRole("button", { name: "Menu" });
+    await user.click(menu);
+    const dialog = screen.getByRole("dialog", {
+      name: t("Administrationsmenu"),
+    });
+    for (const label of [
+      "Overblik",
+      "Kunder",
+      "Projekter og prompter",
+      "API-forbindelser",
+      "Admins",
+      "Forbrug og udgifter",
+      "Aktivitetslog",
+    ])
+      expect(
+        within(dialog).getByRole("button", { name: t(label) }),
+      ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("combobox", { name: t("Sprog") }),
+    ).toHaveValue(language);
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: t("Projekter og prompter"),
+      }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(menu).toHaveFocus();
+    expect(
+      screen.getByRole("heading", {
+        level: 1,
+        name: t("Projekter og prompter"),
+      }),
+    ).toBeInTheDocument();
+    await user.click(menu);
+    fireEvent(
+      screen.getByRole("dialog"),
+      new Event("cancel", { cancelable: true }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(menu).toHaveFocus();
+  },
+);
+
 test.each([
   { role: "Admin", path: "/backoffice/", language: "en" },
   { role: "Admin", path: "/backoffice/", language: "da" },
@@ -128,7 +177,7 @@ test.each(["invitation", "owner"])(
     render(<App />);
     if (flow === "invitation")
       await userEvent.click(
-        screen.getByRole("button", { name: "Continue to registration" }),
+        await screen.findByRole("button", { name: "Continue to registration" }),
       );
     expect(
       await screen.findByRole("img", {
@@ -318,7 +367,7 @@ test.each(["en", "da"] as const)(
       await screen.findByRole("button", { name: t("Tilslut rapportering") }),
     );
     await user.type(
-      screen.getByLabelText(t("Navn på rapporteringsforbindelsen")),
+      await screen.findByLabelText(t("Navn på rapporteringsforbindelsen")),
       "Reports",
     );
     await user.type(

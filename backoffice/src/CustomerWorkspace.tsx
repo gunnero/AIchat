@@ -1,4 +1,5 @@
 import {
+  lazy,
   useEffect,
   useRef,
   useState,
@@ -23,7 +24,10 @@ import {
 import { api, type Session } from "./client";
 import { t, useLanguage, LanguagePicker, getLanguage } from "./i18n";
 import "./customer.css";
-import { AccountDialog } from "./AccountPanel";
+import { Deferred } from "./Deferred";
+const AccountDialog = lazy(() =>
+  import("./AccountPanel").then((m) => ({ default: m.AccountDialog })),
+);
 import {
   projectColor,
   projectColorStyle,
@@ -838,13 +842,15 @@ export function CustomerWorkspace({
         </Dialog>
       )}
       {accountOpen && (
-        <AccountDialog
-          key={session.id}
-          session={session}
-          onNameChange={onNameChange}
-          logout={logout}
-          close={() => setAccountOpen(false)}
-        />
+        <Deferred>
+          <AccountDialog
+            key={session.id}
+            session={session}
+            onNameChange={onNameChange}
+            logout={logout}
+            close={() => setAccountOpen(false)}
+          />
+        </Deferred>
       )}
     </div>
   );

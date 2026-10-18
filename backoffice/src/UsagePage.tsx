@@ -81,6 +81,16 @@ const date = (value: string) =>
     timeStyle: "short",
     timeZone: "UTC",
   }).format(new Date(value)) + " UTC";
+function Cell({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <td role="cell">
+      <span className="usage-cell-label" aria-hidden="true">
+        {label}
+      </span>
+      <div className="usage-cell-value">{children}</div>
+    </td>
+  );
+}
 function DataTable({
   title,
   headers,
@@ -95,19 +105,21 @@ function DataTable({
       className="table-scroll usage-table"
       role="region"
       tabIndex={0}
-      aria-label={t("Tabel med vandret rulning") + " · " + title}
+      aria-label={title}
     >
       <p className="table-hint">{t("Rul til siden for flere kolonner.")}</p>
-      <table>
+      <table role="table">
         <caption className="usage-sr-only">{title}</caption>
-        <thead>
-          <tr>
+        <thead role="rowgroup">
+          <tr role="row">
             {headers.map((h) => (
-              <th key={h}>{h}</th>
+              <th role="columnheader" scope="col" key={h}>
+                {h}
+              </th>
             ))}
           </tr>
         </thead>
-        <tbody>{children}</tbody>
+        <tbody role="rowgroup">{children}</tbody>
       </table>
     </div>
   );
@@ -358,8 +370,8 @@ export function UsagePage({
                   ]}
                 >
                   {report.projects.map((p) => (
-                    <tr key={p.projectRef || "unallocated"}>
-                      <td>
+                    <tr role="row" key={p.projectRef || "unallocated"}>
+                      <Cell label={t("OpenAI-projekt")}>
                         <strong>
                           {p.appProjects.map((a) => a.name).join(", ") ||
                             (p.projectRef
@@ -367,15 +379,21 @@ export function UsagePage({
                               : t("Ikke fordelt på projekt"))}
                         </strong>
                         {p.projectRef && <small>{p.projectRef}</small>}
-                      </td>
-                      <td>{number(p.inputTokens)}</td>
-                      <td>{number(p.outputTokens)}</td>
-                      <td>{number(p.requests)}</td>
-                      <td>{money(p.costUsd)}</td>
+                      </Cell>
+                      <Cell label={t("Inputtokens")}>
+                        {number(p.inputTokens)}
+                      </Cell>
+                      <Cell label={t("Outputtokens")}>
+                        {number(p.outputTokens)}
+                      </Cell>
+                      <Cell label={t("Modelkald")}>{number(p.requests)}</Cell>
+                      <Cell label={t("Udgifter · USD")}>
+                        {money(p.costUsd)}
+                      </Cell>
                     </tr>
                   ))}
                   {!report.projects.length && (
-                    <tr>
+                    <tr role="row">
                       <td colSpan={5}>
                         {t(
                           "OpenAI har endnu ikke rapporteret forbrug i denne periode.",
@@ -396,10 +414,14 @@ export function UsagePage({
                       ]}
                     >
                       {report.days.map((d) => (
-                        <tr key={d.day}>
-                          <td>{d.day}</td>
-                          <td>{number(d.inputTokens + d.outputTokens)}</td>
-                          <td>{money(d.costUsd)}</td>
+                        <tr role="row" key={d.day}>
+                          <Cell label={t("Dato · UTC")}>{d.day}</Cell>
+                          <Cell label={t("Modeltokens")}>
+                            {number(d.inputTokens + d.outputTokens)}
+                          </Cell>
+                          <Cell label={t("Udgifter · USD")}>
+                            {money(d.costUsd)}
+                          </Cell>
                         </tr>
                       ))}
                     </DataTable>
@@ -475,8 +497,8 @@ export function UsagePage({
               ]}
             >
               {accounts.map((a) => (
-                <tr key={a.id}>
-                  <td>
+                <tr role="row" key={a.id}>
+                  <Cell label={t("Bruger")}>
                     <strong>{a.name}</strong>
                     <small>{a.email}</small>
                     <small>
@@ -492,8 +514,8 @@ export function UsagePage({
                         ? " · " + t("Adgang til") + " " + a.expires
                         : ""}
                     </small>
-                  </td>
-                  <td>
+                  </Cell>
+                  <Cell label={t("Projekter")}>
                     {a.projects.length
                       ? a.projects.map((p) => (
                           <span className="usage-project" key={p.id}>
@@ -502,14 +524,14 @@ export function UsagePage({
                           </span>
                         ))
                       : "—"}
-                  </td>
-                  <td>{number(a.allowance)}</td>
-                  <td>{t("Ikke målt")}</td>
-                  <td>{t("Ikke målt")}</td>
+                  </Cell>
+                  <Cell label={t("Svarramme")}>{number(a.allowance)}</Cell>
+                  <Cell label={t("Brugte tokens")}>{t("Ikke målt")}</Cell>
+                  <Cell label={t("Brugt beløb · USD")}>{t("Ikke målt")}</Cell>
                 </tr>
               ))}
               {!accounts.length && (
-                <tr>
+                <tr role="row">
                   <td colSpan={5}>{t("Ingen brugere matcher filtrene.")}</td>
                 </tr>
               )}

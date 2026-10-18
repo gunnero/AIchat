@@ -2,6 +2,10 @@
 export const english = {
   Administration: "Administration",
   Administrationsmenu: "Administration menu",
+  Menu: "Menu",
+  "Siden kunne ikke indlæses. Genindlæs for at prøve igen.":
+    "The page could not be loaded. Reload to try again.",
+  "Genindlæs siden": "Reload page",
   "Åbner dit arbejdsrum…": "Opening your workspace…",
   "Log ind i administrationen": "Sign in to administration",
   "Log ind i dit arbejdsrum": "Sign in to your workspace",
@@ -103,7 +107,7 @@ export const english = {
   "Dit arbejdsrum": "Your workspace",
   "Eksempel på sidemenuens farve": "Sidebar colour preview",
   "Eksempel på arbejdsrummets farve": "Workspace colour preview",
-  "Annullér": "Cancel",
+  Annullér: "Cancel",
   "Arbejdsrummets knapper, links og sidemenu følger denne farve, når projektet er valgt.":
     "Workspace buttons, links and the sidebar use this colour when the project is selected.",
   "Brug # og seks tegn, fx #3B82F6. Tekst og knapper tilpasses automatisk, så de er lette at læse.":

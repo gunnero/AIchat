@@ -20,6 +20,59 @@ const origin = "https://admin.example.test",
   localOrigin = "http://127.0.0.1:8765";
 const fixtureKey = "sk-proj-" + "synthetic_test_only_".repeat(5);
 const fixturePassword = "A synthetic test password 2026!";
+test("only successful hashed public build assets are cacheable; documents, APIs and errors remain no-store", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "ai-public-assets-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(join(root, "assets"));
+  await writeFile(join(root, "index.html"), "<p>Synthetic shell</p>");
+  await writeFile(
+    join(root, "assets/app-abcdefgh.js"),
+    "// public synthetic asset",
+  );
+  await writeFile(join(root, "assets/app.js"), "// public unversioned asset");
+  const app = await buildServer({
+    vaultKey: randomBytes(32),
+    origin,
+    staticRoot: root,
+    customerRoot: root,
+  });
+  t.after(() => app.close());
+  for (const method of ["GET", "HEAD"]) {
+    const r = await app.inject({
+      method,
+      url: "/backoffice/assets/app-abcdefgh.js?v=1",
+    });
+    assert.equal(r.statusCode, 200);
+    assert.equal(
+      r.headers["cache-control"],
+      "public, max-age=31536000, immutable",
+    );
+    assert.equal(r.headers["set-cookie"], undefined);
+    const unchanged = await app.inject({
+      method,
+      url: "/backoffice/assets/app-abcdefgh.js",
+      headers: { "if-none-match": r.headers.etag },
+    });
+    assert.equal(unchanged.statusCode, 304);
+    assert.equal(
+      unchanged.headers["cache-control"],
+      "public, max-age=31536000, immutable",
+    );
+  }
+  for (const [url, status] of [
+    ["/", 200],
+    ["/backoffice/", 200],
+    ["/backoffice/assets/app.js", 200],
+    ["/backoffice/assets/missing-abcdefgh.js", 404],
+    ["/api/auth/session", 401],
+    ["/api/account", 401],
+  ]) {
+    const r = await app.inject({ url });
+    assert.equal(r.statusCode, status, url);
+    assert.equal(r.headers["cache-control"], "no-store", url);
+  }
+});
 async function fixture(
   t,
   {

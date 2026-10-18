@@ -124,6 +124,12 @@
 .usage-table td:last-child {
   white-space: nowrap;
 }
+.usage-cell-label {
+  display: none;
+}
+.usage-cell-value {
+  min-width: 0;
+}
 .usage-daily {
   margin-top: 20px;
 }
@@ -155,6 +161,50 @@
   }
 }
 @media (max-width: 650px) {
+  .usage-table {
+    overflow: visible;
+  }
+  .usage-table table,
+  .usage-table tbody {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .usage-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .usage-table .table-hint {
+    display: none;
+  }
+  .usage-table tr {
+    display: block;
+    padding: 14px;
+    border-bottom: 1px solid #dedede;
+  }
+  .usage-table tr:last-child {
+    border-bottom: 0;
+  }
+  .usage-table td {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: 12px;
+    padding: 9px 0;
+    border: 0;
+    white-space: normal;
+    min-width: 0;
+  }
+  .usage-table td[colspan] {
+    display: block;
+  }
+  .usage-cell-label {
+    display: block;
+    color: #626262;
+    font-size: 14px;
+  }
   .usage-section {
     padding: 18px;
   }
