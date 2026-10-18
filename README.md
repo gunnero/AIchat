@@ -1,6 +1,8 @@
 # AI - Kundetypeassistent
 
-A Danish customer-type assistant for Helle Bodeholt. This is the first **local demo** batch (AK-001–AK-009), based on selected design option 1.
+A Danish customer-type assistant for Helle Bodeholt. This is the first **synthetic demo** batch (AK-001–AK-009), based on selected design option 1.
+
+[Open the live demo](https://ai.igurl.dk/) · [Deployment and rollback](docs/deployment-jig.md). Use fictional information only; the demo resets on reload.
 
 [Project roadmap](https://github.com/gunnero/AIchat/issues/1) · [Task index](planning/TASKS.md) · [Scope](planning/PROJECT.md) · [Architecture](docs/architecture.md)
 

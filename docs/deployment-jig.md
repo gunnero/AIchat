@@ -1,6 +1,6 @@
 # Demo deployment on jig
 
-Deployment status on 16 October 2026: **uploaded and verified directly against the server; public DNS and trusted HTTPS are pending**. This is the synthetic, in-memory demo. It has no real authentication, AI requests, customer database, email delivery or billing. Do not use it for customer data.
+Deployment status on 18 October 2026: **live and verified at [https://ai.igurl.dk](https://ai.igurl.dk/)**. This is the synthetic, in-memory demo. It has no real authentication, AI requests, customer database, email delivery or billing. Do not use it for customer data.
 
 ## Verified mapping
 
@@ -8,6 +8,7 @@ Deployment status on 16 October 2026: **uploaded and verified directly against t
 | --- | --- |
 | Requested public hostname | `ai.igurl.dk` |
 | Server | `jig.123url.dk`, `46.224.27.137` |
+| IPv6 | `2a01:4f8:1c19:c06c::1` |
 | Web server | Apache; Virtualmin child server of `igurl.dk` |
 | Release owner | `igurl` |
 | Site directory | `/home/igurl/domains/ai.igurl.dk` |
@@ -30,22 +31,26 @@ The uploaded bundle also includes a generated `release.json` containing its sour
 
 Release files are readable static assets. PHP, CGI, server-side includes, directory listing and `.htaccess` overrides are disabled for this site. CSP allows only local scripts, styles and fonts and disallows network API requests. HTML and release metadata revalidate; fingerprinted assets have immutable caching. Gzip was verified for JavaScript (305,362 bytes uncompressed; 91,528 transferred compressed). These controls support demo hosting and do not establish production security or GDPR compliance.
 
-## Remaining DNS and HTTPS work
+## DNS, HTTPS and renewal
 
-Authoritative DNS is hosted by Hetzner. At the last check, `ai.igurl.dk` returned NXDOMAIN. Add only this record in the `igurl.dk` zone:
+Authoritative DNS is hosted by Hetzner. The user configured DNS; both records resolve to addresses verified on jig, and HTTP/HTTPS were checked over each address family:
 
 | Type | Name | Value |
 | --- | --- | --- |
 | A | `ai` | `46.224.27.137` |
+| AAAA | `ai` | `2a01:4f8:1c19:c06c::1` |
 
-No AAAA record is needed for this deployment. After authoritative and public resolvers return the correct A record:
+The Let's Encrypt certificate covers **only** `ai.igurl.dk` and currently expires on **16 January 2027**. Apache reads `/etc/letsencrypt/live/ai.igurl.dk/fullchain.pem` and `privkey.pem`. The final vhost in `deploy/jig/ai.igurl.dk.conf` is installed, with HTTP-to-HTTPS redirection, TLS 1.2/1.3, HTTP/2 and a one-day HSTS policy for this hostname only.
 
-1. Verify `http://ai.igurl.dk/.well-known/acme-challenge/<temporary-test-file>` reaches this site's dedicated ACME directory, then remove the test file.
-2. Issue a certificate for **only** `ai.igurl.dk`, using the existing Certbot account and webroot authenticator. For the issuance command, use `--no-directory-hooks` to avoid the existing global hook that reloads unrelated mail/control-panel services. Arrange an Apache-only renewal reload for this certificate and verify it with a dry run.
-3. Install `deploy/jig/ai.igurl.dk.conf` only after the referenced Let's Encrypt certificate files exist. Back up the current vhost, run `apachectl configtest`, and gracefully reload Apache. This enables HTTP-to-HTTPS redirection, TLS 1.2/1.3 and a one-day HSTS policy for this hostname only.
-4. Verify certificate hostname/chain, HTTP redirect, health and release metadata, assets, browser interactions and console, renewal, and logs. Update this document and GitHub with the results.
+Certbot uses the dedicated ACME web root and the existing enabled, active `certbot.timer`. The certificate-specific deploy hook is `/usr/local/sbin/ai-kundetypeassistent-reload-apache`, maintained in `deploy/jig/reload-apache.sh`. It validates Apache before a graceful reload. The pre-existing `/etc/letsencrypt/renewal-hooks/deploy/123url-reload-services.sh` now skips **only** this certificate's exact `RENEWED_LINEAGE`; its behavior for other certificates is preserved. This prevents this demo's renewal from reloading unrelated mail/control-panel services.
 
-The current temporary vhost serves the demo over HTTP and retains Virtualmin's generated self-signed certificate. **Trusted public HTTPS has not been configured or verified.** The repository's final vhost is prepared for the trusted certificate; it is not the temporary live configuration.
+Renewal was verified successfully, including deploy hooks, with:
+
+```sh
+certbot renew --cert-name ai.igurl.dk --dry-run --run-deploy-hooks --non-interactive --no-random-sleep-on-renew
+```
+
+The HTTP redirect explicitly excludes `/.well-known/acme-challenge/`, which was tested over IPv4 and IPv6. Temporary challenge-check files were removed. Certificate keys remain on the server and are not included in the repository or web root.
 
 ## Verification completed
 
@@ -58,11 +63,17 @@ The current temporary vhost serves the demo over HTTP and retains Virtualmin's g
 - Apache configuration validation passed, and Apache remains active after graceful reload.
 - Checksums confirm all pre-existing Apache site configuration files are unchanged.
 - No unexpected application errors appeared in this site's error log; the deliberate denied-file probe produced an expected 403 log entry.
-- Public hostname/browser and trusted TLS checks remain pending DNS.
+- Trusted public HTTPS works over IPv4 and IPv6; hostname/chain verification passes and HTTP redirects preserve paths and query strings.
+- All 13 deployed assets also matched the release manifest over public HTTPS.
+- Certificate renewal simulation and its Apache-only deploy hook succeeded; the existing renewal timer is enabled and active.
+- The live browser loaded without certificate warnings. Simulated chat completion, sharing preview, navigation and the admin customer list worked; console warnings/errors were empty. See [live screenshot](screenshots/live-https.png).
+- After HTTPS activation, unrelated vhost checksums still match the original baseline. Recent error-log entries are denied environment-file probes; no browser application errors were observed.
 
 ## Recovery and future releases
 
 Fresh administrative backups are under `/root/123url-config-backups/ai.igurl.dk-20261016T202706Z`, outside Apache include directories. They include pre-creation vhost configuration/checksums, the generated child vhost, and the initial static settings. Existing sites must not be restored wholesale from this archive; restore only this site's file when necessary, validate Apache, then reload it.
+
+HTTPS-specific backups from 18 October are under `/root/123url-config-backups/ai.igurl.dk-https-20261018T083913Z`, including the previous vhost, static settings and global renewal hook. Once HTTPS is live, application rollback should retain the valid certificate and final HTTPS vhost. The old staging vhost uses a self-signed certificate and is not an acceptable public HTTPS fallback. If the certificate-specific renewal setup is removed later, restore the original global hook only after reviewing any intervening changes.
 
 The site's initial placeholder web root is preserved in both `backups/initial-public-html-20261016.tar.gz` and `backups/public_html.initial-20261016`. There was no existing application or database in this newly created child site.
 
