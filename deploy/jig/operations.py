@@ -164,8 +164,29 @@ def publish(config, kind, source, files):
     return receipt
 
 
-def worker(config, user, script, args, env=None):
-    return command(["/usr/sbin/runuser", "-u", user, "--", "/usr/bin/env", *(f"{k}={v}" for k, v in (env or {}).items()), config["node"], str(Path(config["appRoot"]) / "server" / script), *map(str, args)])
+def user_command(user, args, writable=None):
+    if user not in ["ai-backup", "ai-migrate", "ai-kundetype", "postgres"]:
+        raise Failure("invalid_worker_identity")
+    # PID 1 sets credentials before installing the worker's syscall restrictions.
+    # In-process runuser/setpriv transitions are denied by jig's sandbox.
+    properties = ["NoNewPrivileges=true", "PrivateTmp=true", "ProtectSystem=strict",
+                  "ProtectHome=true", "ProtectKernelTunables=true", "ProtectKernelModules=true",
+                  "ProtectControlGroups=true", "RestrictSUIDSGID=true",
+                  "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6", "CapabilityBoundingSet=",
+                  "MemoryMax=512M", "UMask=0077", "RuntimeMaxSec=210", "TimeoutStopSec=10"]
+    if writable:
+        folder = Path(writable).resolve()
+        root = Path("/run/ai-kundetype-operations")
+        if folder == root or not folder.is_relative_to(root):
+            raise Failure("invalid_worker_directory")
+        properties.append("ReadWritePaths=" + str(folder))
+    return ["/usr/bin/systemd-run", "--quiet", "--wait", "--pipe", "--collect",
+            "--unit=ai-kundetype-worker-" + uuid.uuid4().hex, "--uid=" + user,
+            *(option for value in properties for option in ["--property", value]), "--", *args]
+
+
+def worker(config, user, script, args, env=None, writable=None):
+    return command(user_command(user, ["/usr/bin/env", *(f"{k}={v}" for k, v in (env or {}).items()), config["node"], str(Path(config["appRoot"]) / "server" / script), *map(str, args)], writable))
 
 
 def backup(config, work):
@@ -183,7 +204,7 @@ def backup(config, work):
         if path.is_file():
             os.chmod(path, 0o600)
     destination = work / "backup"
-    worker(config, "ai-backup", "backup.mjs", [destination], {"STATE_DIR": str(source), "BACKUP_DATABASE_URL": "postgresql://ai_backup@localhost/ai_customer?host=/run/postgresql-ai&port=5433"})
+    worker(config, "ai-backup", "backup.mjs", [destination], {"STATE_DIR": str(source), "BACKUP_DATABASE_URL": "postgresql://ai_backup@localhost/ai_customer?host=/run/postgresql-ai&port=5433"}, writable=work)
     if private_read(config["vaultFile"]) != key:
         raise Failure("vault_changed_during_backup")
     # Capture again after pg_dump, so concurrent deletions are included.
@@ -206,13 +227,15 @@ def journal(config, work):
 def reset_drill_database(name):
     if name not in ["ai_ops_probe", "ai_ops_restore"]:
         raise Failure("invalid_drill_target")
-    base = ["/usr/sbin/runuser", "-u", "postgres", "--", "/usr/bin/psql", "-h", "/run/postgresql-ai", "-p", "5433", "-d", "postgres", "-X", "-At", "-v", "ON_ERROR_STOP=1"]
-    marker = command([*base, "-c", f"SELECT coalesce(shobj_description(oid,'pg_database'),'') FROM pg_database WHERE datname='{name}'"]).decode().strip()
+    base = ["/usr/bin/psql", "-h", "/run/postgresql-ai", "-p", "5433", "-d", "postgres", "-X", "-At", "-v", "ON_ERROR_STOP=1"]
+    def sql(statement):
+        return command(user_command("postgres", [*base, "-c", statement]))
+    marker = sql(f"SELECT coalesce(shobj_description(oid,'pg_database'),'') FROM pg_database WHERE datname='{name}'").decode().strip()
     if marker != "AI OPERATIONS SYNTHETIC ONLY":
         raise Failure("unmarked_drill_database")
-    command([*base, "-c", f'DROP DATABASE {name} WITH (FORCE)'])
-    command([*base, "-c", f'CREATE DATABASE {name} OWNER ai_owner'])
-    command([*base, "-c", f"COMMENT ON DATABASE {name} IS 'AI OPERATIONS SYNTHETIC ONLY'; REVOKE ALL ON DATABASE {name} FROM PUBLIC; GRANT CONNECT ON DATABASE {name} TO ai_migrator"])
+    sql(f'DROP DATABASE {name} WITH (FORCE)')
+    sql(f'CREATE DATABASE {name} OWNER ai_owner')
+    sql(f"COMMENT ON DATABASE {name} IS 'AI OPERATIONS SYNTHETIC ONLY'; REVOKE ALL ON DATABASE {name} FROM PUBLIC; GRANT CONNECT ON DATABASE {name} TO ai_migrator")
 
 
 def drill(config, work):
@@ -221,7 +244,7 @@ def drill(config, work):
     try:
         for name in ["ai_ops_probe", "ai_ops_restore"]:
             reset_drill_database(name)
-        result = json.loads(worker(config, "ai-migrate", "operations-drill.mjs", [work]))
+        result = json.loads(worker(config, "ai-migrate", "operations-drill.mjs", [work], writable=work))
         if result != {"synthetic": True, "restored": True, "deletedChatAbsent": True, "mfaPreserved": True, "ownerProtected": True}:
             raise Failure("restore_drill_failed")
         return result
@@ -319,7 +342,7 @@ def notify(config, event, issues):
     text = ("TEST ONLY — checking operational email delivery.\n" if event == "test" else "Operational status change.\n")
     text += "Service: https://ai.igurl.dk\nTime: " + dt.datetime.now(UTC).isoformat() + "\n"
     text += "Checks: " + (", ".join(issues) if issues else "healthy") + "\nNo customer content or credentials are included.\n"
-    result = json.loads(command(["/usr/sbin/runuser", "-u", "ai-kundetype", "--", config["node"], str(Path(config["appRoot"]) / "server/operations-alert.mjs")], input=json.dumps({"to": config["alertTo"], "subject": subject, "text": text}).encode()))
+    result = json.loads(command(user_command("ai-kundetype", [config["node"], str(Path(config["appRoot"]) / "server/operations-alert.mjs")]), input=json.dumps({"to": config["alertTo"], "subject": subject, "text": text}).encode()))
     if result.get("accepted") is not True:
         raise Failure("alert_not_accepted")
     return result

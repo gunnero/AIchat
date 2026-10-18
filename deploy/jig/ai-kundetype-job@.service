@@ -23,11 +23,9 @@ ReadWritePaths=-/mnt/HC_Volume_106669788/ai-kundetypeassistent-backups
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-# Workers must switch to the dedicated backup/migration/service identities.
-# On jig, RestrictSUIDSGID also denies those UID transitions. Keep
-# NoNewPrivileges and the narrow capability bound instead.
+RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_SETUID CAP_SETGID
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
 MemoryMax=512M
 Nice=10
 IOSchedulingClass=idle

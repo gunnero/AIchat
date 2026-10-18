@@ -16,6 +16,18 @@ spec.loader.exec_module(ops)
 
 
 class OperationsTest(unittest.TestCase):
+    def test_workers_are_separate_restricted_units_with_fixed_identities(self):
+        args = ops.user_command("ai-backup", ["/usr/bin/id"], "/run/ai-kundetype-operations/backup-test")
+        self.assertEqual(args[0], "/usr/bin/systemd-run")
+        self.assertIn("--uid=ai-backup", args)
+        for prop in ["NoNewPrivileges=true", "CapabilityBoundingSet=", "RestrictSUIDSGID=true", "ProtectSystem=strict", "ReadWritePaths=/run/ai-kundetype-operations/backup-test"]:
+            self.assertIn(prop, args)
+        with self.assertRaisesRegex(ops.Failure, "invalid_worker_identity"):
+            ops.user_command("root", ["/usr/bin/id"])
+        for path in ["/", "/var/lib/ai-kundetypeassistent", "/run/ai-kundetype-operations"]:
+            with self.assertRaisesRegex(ops.Failure, "invalid_worker_directory"):
+                ops.user_command("ai-backup", ["/usr/bin/id"], path)
+
     def test_missing_mount_never_writes_to_underlying_system_disk(self):
         with tempfile.TemporaryDirectory() as name:
             cfg = {"mount": name, "mountUuid": "expected-volume", "repository": name + "/ai-kundetypeassistent-backups"}
