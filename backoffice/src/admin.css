@@ -131,6 +131,26 @@
   background: #fafafa;
   border-color: #8c8e94;
 }
+.bo-shell .metric > span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+@media (max-width: 360px) {
+  .bo-shell .metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bo-shell .metric {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 18px;
+  }
+  .bo-shell .metric > strong {
+    font-size: 32px;
+    margin: 0;
+  }
+}
 .bo-shell .intro > .eyebrow {
   display: none;
 }
