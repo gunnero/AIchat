@@ -3,10 +3,11 @@ import { CustomerWorkspace } from "./CustomerWorkspace";
 import { SecurityConfirmation } from "./SecurityConfirmation";
 import { PlatformPromptForm } from "./PlatformPromptForm";
 import { AuthenticatorSetup } from "./AuthenticatorSetup";
+import { Dialog } from "./Dialog";
+import { AccountPanel } from "./AccountPanel";
 import { t, getLanguage, useLanguage, LanguagePicker } from "./i18n";
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type FormEvent,
@@ -38,6 +39,8 @@ type Account = {
   status: string;
   locale: "en" | "da";
   invitation: Invitation;
+  allowance?: number;
+  assignments?: { projectId: string; versionId: string }[];
 };
 type Customer = {
   id: string;
@@ -268,7 +271,7 @@ export function App() {
   }
   useEffect(() => {
     const epoch = authEpoch.current;
-    if (session?.role === "Admin")
+    if (session?.role === "Admin" && backoffice)
       reload(epoch).catch((e) => {
         if (epoch !== authEpoch.current) return;
         setError(e.message);
@@ -403,7 +406,7 @@ export function App() {
       </div>
     );
   if (!session) return <Login onLogin={setSession} error={t(error)} />;
-  if (session.role === "Customer") {
+  if (!backoffice || session.role === "Customer") {
     if (backoffice) {
       location.replace("/");
       return null;
@@ -413,12 +416,15 @@ export function App() {
         key={session.id}
         session={session}
         logout={clearSession}
+        onNameChange={(name) =>
+          setSession((current) =>
+            current && current.id === session.id
+              ? { ...current, name }
+              : current,
+          )
+        }
       />
     );
-  }
-  if (!backoffice) {
-    location.replace("/backoffice/");
-    return null;
   }
   const selected = tabs().find((t) => t.id === tab)!;
   const navigate = (id: string) => {
@@ -446,13 +452,20 @@ export function App() {
           ))}
         </nav>
         <div className="side-footer">
-          <div className="admin-person">
+          <button
+            className="admin-person account-trigger"
+            onClick={() => setModal({ type: "account" })}
+            aria-label={t("Min konto")}
+          >
             <span>{session.name.slice(0, 1).toUpperCase()}</span>
             <div>
               <strong>{session.name}</strong>
               <small>Admin · 2FA</small>
             </div>
-          </div>
+          </button>
+          <a className="workspace-link" href="/">
+            {t("Åbn mit arbejdsrum")}
+          </a>
           <button onClick={() => setModal({ type: "password" })}>
             {t("Skift adgangskode")}{" "}
           </button>
@@ -940,6 +953,14 @@ export function App() {
                       >
                         {t("Administrér")}
                       </button>
+                      <button
+                        className="text-button"
+                        onClick={() =>
+                          setModal({ type: "staff-workspace", value: a })
+                        }
+                      >
+                        {t("Tildel assistenter")}
+                      </button>
                       {a.status === "pending" && (
                         <InviteActions
                           accountId={a.id}
@@ -990,25 +1011,29 @@ export function App() {
             verification
               ? t("Bekræft ændringen")
               : modal
-                ? modal.type === "staff"
-                  ? t("Administrér Admin")
-                  : modal.type === "customer"
-                    ? modal.value
-                      ? t("Administrér kunde")
-                      : t("Tilføj kunde")
-                    : modal.type === "project"
-                      ? modal.value
-                        ? t("Redigér projekt")
-                        : t("Tilføj projekt")
-                      : modal.type === "connection"
-                        ? t("Tilføj API-forbindelse")
-                        : modal.type === "rotate"
-                          ? t("Udskift API-nøgle")
-                          : modal.type === "prompt-link"
-                            ? t("Tilknyt OpenAI-prompt")
-                            : modal.type === "password"
-                              ? t("Skift adgangskode")
-                              : t("Prompt og instruktioner")
+                ? modal.type === "account"
+                  ? t("Min konto")
+                  : modal.type === "staff-workspace"
+                    ? t("Tildel assistenter")
+                    : modal.type === "staff"
+                      ? t("Administrér Admin")
+                      : modal.type === "customer"
+                        ? modal.value
+                          ? t("Administrér kunde")
+                          : t("Tilføj kunde")
+                        : modal.type === "project"
+                          ? modal.value
+                            ? t("Redigér projekt")
+                            : t("Tilføj projekt")
+                          : modal.type === "connection"
+                            ? t("Tilføj API-forbindelse")
+                            : modal.type === "rotate"
+                              ? t("Udskift API-nøgle")
+                              : modal.type === "prompt-link"
+                                ? t("Tilknyt OpenAI-prompt")
+                                : modal.type === "password"
+                                  ? t("Skift adgangskode")
+                                  : t("Prompt og instruktioner")
                 : ""
           }
           onClose={() => {
@@ -1034,6 +1059,29 @@ export function App() {
                 <p className="alert" role="alert">
                   {t(error)}
                 </p>
+              )}
+              {modal.type === "account" && (
+                <AccountPanel
+                  session={session}
+                  onNameChange={(name) =>
+                    setSession((current) =>
+                      current && current.id === session.id
+                        ? { ...current, name }
+                        : current,
+                    )
+                  }
+                  logout={clearSession}
+                />
+              )}
+              {modal.type === "staff-workspace" && (
+                <StaffWorkspaceForm
+                  account={modal.value as Account}
+                  data={data}
+                  busy={busy}
+                  save={(v) =>
+                    mutate("/staff/" + modal.value!.id + "/workspace", v, "PUT")
+                  }
+                />
               )}
               {modal.type === "staff" && (
                 <StaffForm
@@ -1408,66 +1456,6 @@ function Setup() {
     </div>
   );
 }
-function Dialog({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-  const previousFocus = useRef(document.activeElement as HTMLElement | null);
-  useEffect(() => {
-    const fields = ref.current?.querySelectorAll<HTMLElement>(
-      'input:not([disabled]):not([readonly]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]):not([readonly])',
-    );
-    Array.from(fields || [])
-      .find((field) => !field.closest("[hidden]"))
-      ?.focus({ preventScroll: true });
-    if (ref.current) ref.current.scrollTop = 0;
-  }, [title]);
-  useEffect(() => {
-    const el = ref.current!;
-    const fields =
-      'input:not([disabled]):not([readonly]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]):not([readonly])';
-    el.showModal();
-    el.querySelector<HTMLElement>(fields)?.focus();
-    return () => {
-      el.close();
-      if (
-        previousFocus.current?.isConnected &&
-        previousFocus.current !== document.body
-      )
-        previousFocus.current.focus();
-      else
-        Array.from(document.querySelectorAll<HTMLDialogElement>("dialog[open]"))
-          .at(-1)
-          ?.querySelector<HTMLElement>(fields)
-          ?.focus();
-    };
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      aria-labelledby={titleId}
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-    >
-      <div className="dialog-heading">
-        <h2 id={titleId}>{title}</h2>
-        <button aria-label={t("Luk")} className="icon-button" onClick={onClose}>
-          <XIcon size={24} />
-        </button>
-      </div>
-      {children}
-    </dialog>
-  );
-}
 function Toolbar({
   title,
   action,
@@ -1627,73 +1615,11 @@ function CustomerForm({
           <input name="expires" type="date" defaultValue={c?.expires || ""} />
         </label>
       </div>
-      <fieldset>
-        <legend>{t("Projekter og promptversioner")}</legend>
-        {data.projects.map((p) => {
-          const selected = assignments.find((a) => a.projectId === p.id),
-            versions = data.prompts.filter((v) => v.project_id === p.id);
-          return (
-            <div className="assignment" key={p.id}>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={!!selected}
-                  disabled={!versions.length}
-                  onChange={(e) =>
-                    setAssignments((previous) =>
-                      e.target.checked
-                        ? [
-                            ...previous,
-                            { projectId: p.id, versionId: versions[0].id },
-                          ]
-                        : previous.filter((a) => a.projectId !== p.id),
-                    )
-                  }
-                />
-                {p.name}
-                {!p.enabled ? t(" · på pause") : ""}
-              </label>
-              {selected ? (
-                <select
-                  aria-label={t("Prompt til ") + p.name}
-                  value={selected.versionId}
-                  onChange={(e) =>
-                    setAssignments((previous) =>
-                      previous.map((a) =>
-                        a.projectId === p.id
-                          ? { ...a, versionId: e.target.value }
-                          : a,
-                      ),
-                    )
-                  }
-                >
-                  {versions.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} ·{" "}
-                      {v.source_kind === "platform"
-                        ? t("OpenAI-standardversion")
-                        : "v" + v.version}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <small>
-                  {versions.length
-                    ? t("Ikke tildelt")
-                    : t("Tilføj først en prompt")}
-                </small>
-              )}
-            </div>
-          );
-        })}
-        {!data.projects.length && (
-          <p className="muted">
-            {t(
-              "Opret projekter og promptversioner for at tildele adgang.",
-            )}{" "}
-          </p>
-        )}
-      </fieldset>
+      <AssignmentFields
+        data={data}
+        assignments={assignments}
+        setAssignments={setAssignments}
+      />
       <p className="footnote">
         {t(
           "En ny kunde får en invitation til at vælge brugernavn og adgangskode og tilknytte en authenticator. Linket udløber efter 48 timer. Eksisterende konti får ikke en ny invitation ved redigering.",
@@ -2003,6 +1929,8 @@ function auditText(action: string) {
     {
       "staff.created": t("Admin inviteret"),
       "staff.updated": t("Admin opdateret"),
+      "staff.workspace_updated": t("Assistenter tildelt"),
+      "account.profile_updated": t("Profil opdateret"),
       "staff.disabled": t("Admin deaktiveret"),
       "invitation.created": t("Invitation oprettet"),
       "invitation.queued": t("Invitation afleveret til mailserver"),
@@ -2250,5 +2178,132 @@ function Registration({ token }: { token: string }) {
         )}
       </section>
     </div>
+  );
+}
+
+function AssignmentFields({
+  data,
+  assignments,
+  setAssignments,
+}: {
+  data: Data;
+  assignments: { projectId: string; versionId: string }[];
+  setAssignments: React.Dispatch<
+    React.SetStateAction<{ projectId: string; versionId: string }[]>
+  >;
+}) {
+  return (
+    <fieldset>
+      <legend>{t("Projekter og promptversioner")}</legend>
+      {data.projects.map((p) => {
+        const selected = assignments.find((a) => a.projectId === p.id),
+          versions = data.prompts.filter((v) => v.project_id === p.id);
+        return (
+          <div className="assignment" key={p.id}>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={!!selected}
+                disabled={!versions.length}
+                onChange={(e) =>
+                  setAssignments((previous) =>
+                    e.target.checked
+                      ? [
+                          ...previous,
+                          { projectId: p.id, versionId: versions[0].id },
+                        ]
+                      : previous.filter((a) => a.projectId !== p.id),
+                  )
+                }
+              />
+              {p.name}
+              {!p.enabled ? t(" · på pause") : ""}
+            </label>
+            {selected ? (
+              <select
+                aria-label={t("Prompt til ") + p.name}
+                value={selected.versionId}
+                onChange={(e) =>
+                  setAssignments((previous) =>
+                    previous.map((a) =>
+                      a.projectId === p.id
+                        ? { ...a, versionId: e.target.value }
+                        : a,
+                    ),
+                  )
+                }
+              >
+                {versions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ·{" "}
+                    {v.source_kind === "platform"
+                      ? t("OpenAI-standardversion")
+                      : "v" + v.version}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <small>
+                {versions.length
+                  ? t("Ikke tildelt")
+                  : t("Tilføj først en prompt")}
+              </small>
+            )}
+          </div>
+        );
+      })}
+      {!data.projects.length && (
+        <p className="muted">
+          {t("Opret projekter og promptversioner for at tildele adgang.")}{" "}
+        </p>
+      )}
+    </fieldset>
+  );
+}
+function StaffWorkspaceForm({
+  account,
+  data,
+  busy,
+  save,
+}: {
+  account: Account;
+  data: Data;
+  busy: boolean;
+  save: (v: unknown) => Promise<boolean>;
+}) {
+  const [assignments, setAssignments] = useState(account.assignments || []);
+  return (
+    <form
+      onSubmit={(e) => {
+        const f = values(e);
+        void save({ allowance: Number(f.allowance), assignments });
+      }}
+    >
+      <p>
+        <strong>{account.name}</strong> · {account.email}
+      </p>
+      <p>
+        {t(
+          "Admin bruger sit eget private arbejdsrum. Tildelingen giver ikke adgang til andres samtaler.",
+        )}
+      </p>
+      <label>
+        {t("Svarramme")}
+        <input
+          name="allowance"
+          type="number"
+          min={0}
+          max={1000000}
+          defaultValue={account.allowance ?? 0}
+          required
+        />
+      </label>
+      <AssignmentFields
+        data={data}
+        assignments={assignments}
+        setAssignments={setAssignments}
+      />
+      <Save busy={busy} />
+    </form>
   );
 }

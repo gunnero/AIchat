@@ -20,7 +20,8 @@ async function schemaVersion(databaseUrl) {
     const version = (
       await db.query("SELECT max(version) AS v FROM schema_version")
     ).rows[0].v;
-    if (![3, 4].includes(version)) throw new Error("Unsupported backup schema");
+    if (![3, 4, 5].includes(version))
+      throw new Error("Unsupported backup schema");
     return version;
   } finally {
     await db.close();
@@ -83,7 +84,8 @@ export async function restorePostgres({ databaseUrl, backup, journal }) {
   const manifest = JSON.parse(
     await readFile(join(backup, "manifest.json"), "utf8"),
   );
-  if (![3, 4].includes(manifest.schema)) throw new Error("Unsupported backup");
+  if (![3, 4, 5].includes(manifest.schema))
+    throw new Error("Unsupported backup");
   for (const name of ["database.dump", "vault.key", "deletions.jsonl"])
     if (manifest.files[name] !== checksum(await readFile(join(backup, name))))
       throw new Error("Backup checksum mismatch");

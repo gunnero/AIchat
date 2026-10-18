@@ -14,6 +14,7 @@ import {
 } from "./security.mjs";
 import { asyncTransaction as transaction } from "./database.mjs";
 import { invitationMessage } from "./mail.mjs";
+import { workspaceSettings } from "./account-area.mjs";
 const P = "/backoffice/api";
 export const username = z
   .string()
@@ -56,13 +57,21 @@ export function installAccounts(
       .get(id)) || null;
   const safe = async (a) => ({
     id: a.id,
-    name: a.name,
+    name:
+      (
+        await db
+          .prepare(
+            "SELECT display_name FROM account_profiles WHERE account_id=?",
+          )
+          .get(a.id)
+      )?.display_name || a.name,
     email: a.email,
     username: a.username,
     status: a.status,
     locale: a.locale,
     role: a.role === "admin" ? "Admin" : "Customer",
     invitation: await inviteMeta(a.id),
+    ...(await workspaceSettings(db, a)),
   });
   const guard = async (id) => {
     const a = await account(id);
@@ -341,6 +350,9 @@ export function installAccounts(
       await db
         .prepare("UPDATE admins SET name=?,status=?,locale=? WHERE id=?")
         .run(v.name, v.status, v.locale, id);
+      await db
+        .prepare("DELETE FROM account_profiles WHERE account_id=?")
+        .run(id);
       if (v.status === "paused")
         await db.prepare("DELETE FROM sessions WHERE admin_id=?").run(id);
       await audit(r.adminId, "staff.updated", id);
@@ -397,7 +409,7 @@ export function installAccounts(
       .get(r.session.customer_id);
     if (!c) fail(403, "Adgang nægtet.");
     return {
-      name: c.name,
+      name: r.session.name,
       allowance: c.allowance,
       expires: c.expires,
       projects: await db

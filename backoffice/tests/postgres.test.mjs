@@ -1,7 +1,7 @@
 import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openPostgres } from "../server/postgres.mjs";
@@ -34,6 +34,190 @@ const maintenance = (fn) =>
     return fn();
   });
 const q = (sql, args = []) => owner.query(sql, args).then((r) => r.rows);
+pgtest(
+  "PostgreSQL: personal profiles are session-owned, persistent and separate from protected identity",
+  async () => {
+    const { a, b, admin, main } = fixtures;
+    assert.equal((await req(null, "/api/account")).statusCode, 401);
+    for (const who of [a, admin, main]) {
+      const before = (await q("SELECT * FROM admins WHERE id=$1", [who.id]))[0];
+      const profile = await req(who, "/api/account/profile", "PUT", {
+        name: "<b>Personal display</b>",
+      });
+      assert.equal(profile.statusCode, 200, profile.body);
+      assert.equal(
+        (await req(who, "/api/auth/session")).json().name,
+        "<b>Personal display</b>",
+      );
+      assert.equal(
+        (await req(who, "/api/account?accountId=" + b.id)).json().id,
+        who.id,
+      );
+      assert.deepEqual(
+        (await q("SELECT * FROM admins WHERE id=$1", [who.id]))[0],
+        before,
+      );
+      assert.equal(
+        (
+          await req(who, "/api/account/profile", "PUT", {
+            name: "Other",
+            accountId: b.id,
+          })
+        ).statusCode,
+        400,
+      );
+      const badCsrf = { headers: { ...who.headers, "x-csrf-token": "wrong" } };
+      assert.equal(
+        (await req(badCsrf, "/api/account/profile", "PUT", { name: "Other" }))
+          .statusCode,
+        403,
+      );
+      const badOrigin = {
+        headers: { ...who.headers, origin: "https://elsewhere.example.test" },
+      };
+      assert.equal(
+        (await req(badOrigin, "/api/account/profile", "PUT", { name: "Other" }))
+          .statusCode,
+        403,
+      );
+      const signed = await req(null, "/api/auth/login", "POST", {
+        email: before.email,
+        password: who.password,
+        code: otp(who.secret).generate(),
+      });
+      // Login requires the configured Origin, even before a session exists.
+      assert.equal(signed.statusCode, 403);
+      const login = await req(who, "/api/auth/login", "POST", {
+        email: before.email,
+        password: who.password,
+        code: otp(who.secret).generate(),
+      });
+      assert.equal(login.statusCode, 200, login.body);
+      assert.equal(login.json().name, "<b>Personal display</b>");
+    }
+    assert.ok(
+      !(await req(b, "/api/account")).body.includes("Personal display"),
+    );
+    await assert.rejects(
+      app.db.query("UPDATE admins SET name='forbidden' WHERE id=$1", [main.id]),
+      { code: "23514" },
+    );
+    assert.ok(
+      !(await q("SELECT * FROM audit")).some((row) =>
+        JSON.stringify(row).includes("Personal display"),
+      ),
+    );
+  },
+);
+
+pgtest(
+  "PostgreSQL: assigned Admins have their own persistent chats, never another user's chats",
+  async () => {
+    const { a, p, other, admin, main } = fixtures;
+    assert.deepEqual(
+      (await req(admin, "/api/customer/projects")).json().projects,
+      [],
+    );
+    const assign = (who) =>
+      req(who, `/backoffice/api/staff/${who.id}/workspace`, "PUT", {
+        allowance: 250,
+        assignments: [{ projectId: p.id, versionId: p.v }],
+      });
+    assert.equal((await assign(admin)).statusCode, 200);
+    assert.equal((await assign(main)).statusCode, 200);
+    const customerChat = await create(a, p),
+      staffChat = await create(admin, p),
+      ownerChat = await create(main, p);
+    for (const [who, c] of [
+      [a, customerChat],
+      [admin, staffChat],
+      [main, ownerChat],
+    ]) {
+      await save(who, p, c);
+      assert.equal((await req(who, url(p, c.id))).statusCode, 200);
+      assert.equal(
+        (await req(who, "/api/account")).json().allowance,
+        who === a ? 100 : 250,
+      );
+      for (const otherUser of [a, admin, main].filter((v) => v !== who)) {
+        assert.equal((await req(otherUser, url(p, c.id))).statusCode, 404);
+        assert.equal(
+          (await req(otherUser, url(p, c.id) + "/messages")).statusCode,
+          404,
+        );
+        assert.equal(
+          (await req(otherUser, url(p, c.id), "DELETE", {})).statusCode,
+          404,
+        );
+      }
+    }
+    assert.equal(
+      (
+        await req(a, `/backoffice/api/staff/${admin.id}/workspace`, "PUT", {
+          allowance: 1,
+          assignments: [],
+        })
+      ).statusCode,
+      403,
+    );
+    assert.equal(
+      (
+        await req(admin, `/backoffice/api/staff/${main.id}/workspace`, "PUT", {
+          allowance: 1,
+          assignments: [],
+        })
+      ).statusCode,
+      403,
+    );
+    const workspace = (
+      await q("SELECT customer_id FROM admin_workspaces WHERE account_id=$1", [
+        admin.id,
+      ])
+    )[0];
+    const staffList = (await req(admin, "/backoffice/api/staff")).json();
+    assert.equal(
+      staffList.find((v) => v.id === admin.id).assignments.length,
+      1,
+    );
+    assert.ok(
+      staffList.every((v) => v.role === "Admin" && !("protected" in v)),
+    );
+    assert.ok(
+      !(await req(admin, "/backoffice/api/customers")).body.includes(
+        workspace.customer_id,
+      ),
+    );
+    const forged = await req(
+      admin,
+      `/backoffice/api/staff/${admin.id}/workspace`,
+      "PUT",
+      { allowance: 99, assignments: [{ projectId: p.id, versionId: other.v }] },
+    );
+    assert.equal(forged.statusCode, 409);
+    assert.equal((await req(admin, "/api/account")).json().allowance, 250);
+    assert.equal((await req(admin, url(p, staffChat.id))).statusCode, 200);
+    assert.equal(
+      (
+        await req(admin, `/backoffice/api/staff/${admin.id}/workspace`, "PUT", {
+          allowance: 250,
+          assignments: [],
+        })
+      ).statusCode,
+      200,
+    );
+    assert.equal((await req(admin, url(p, staffChat.id))).statusCode, 404);
+    assert.equal((await req(main, url(p, ownerChat.id))).statusCode, 200);
+    await maintenance(() =>
+      q("UPDATE sessions SET mfa_at=$1 WHERE hash=$2", [
+        Date.now() - 11 * 60000,
+        digest(admin.raw),
+      ]),
+    );
+    const stale = await assign(admin);
+    assert.equal(stale.statusCode, 403);
+    assert.equal(stale.json().code, "reauth_required");
+  },
+);
 async function account(role = "customer", customer = null, protectedOwner = 0) {
   const id = randomUUID(),
     raw = token(),
@@ -196,7 +380,7 @@ pgtest(
     await save(a, p, c);
     assert.equal((await req(null, url(p))).statusCode, 401);
     for (const who of [admin, main])
-      assert.equal((await req(who, url(p, c.id))).statusCode, 403);
+      assert.equal((await req(who, url(p, c.id))).statusCode, 404);
     assert.deepEqual((await req(b, url(p))).json().items, []);
     for (const route of [
       url(p, c.id),
@@ -744,7 +928,7 @@ pgtest(
         journal,
       });
       assert.equal(result.deletionJournalApplied, true);
-      assert.equal(result.schema, 4);
+      assert.equal(result.schema, 5);
       assert.equal(
         (
           await restore.query(
@@ -998,8 +1182,8 @@ pgtest(
       p.v,
     );
     await save(a, p, c, "Existing pinned conversation still accepts messages");
-    assert.equal((await req(admin, url(p, c.id))).statusCode, 403);
-    assert.equal((await req(main, url(p, c.id))).statusCode, 403);
+    assert.equal((await req(admin, url(p, c.id))).statusCode, 404);
+    assert.equal((await req(main, url(p, c.id))).statusCode, 404);
     const conflict = await req(admin, route, "POST", {
       prompts: [
         { name: "Rollback me", instructions: "Synthetic" },
@@ -1157,7 +1341,7 @@ pgtest(
     const next = await create(a, p);
     await save(a, p, next, "Private saved message; live AI is still disabled");
     for (const who of [admin, main])
-      assert.equal((await req(who, url(p, next.id))).statusCode, 403);
+      assert.equal((await req(who, url(p, next.id))).statusCode, 404);
     assert.ok(
       !(await req(a, "/api/customer/projects")).body.includes("pmpt_synthetic"),
     );
@@ -1165,7 +1349,7 @@ pgtest(
 );
 
 pgtest(
-  "PostgreSQL: additive schema 3 to 4 migration preserves MFA, owner protection, sessions, vault ciphertext and private history",
+  "PostgreSQL: additive schema 3 to 5 migration preserves MFA, owner protection, sessions, vault ciphertext and private history",
   async () => {
     const { a, p, main } = fixtures,
       c = await create(a, p);
@@ -1176,7 +1360,19 @@ pgtest(
     await maintenance(async () => {
       await q("DROP TABLE platform_prompt_links");
       await q("DROP INDEX project_connection_binding");
-      await q("DELETE FROM schema_version WHERE version=4");
+      await q("DELETE FROM schema_version WHERE version>=4");
+      await q("DROP TABLE account_profiles,admin_workspaces");
+      const schema = await readFile(
+        new URL("../server/schema.sql", import.meta.url),
+        "utf8",
+      );
+      const legacyFunction = schema.slice(
+        schema.indexOf("CREATE FUNCTION public.chat_customer()"),
+        schema.indexOf("CREATE FUNCTION public.chat_access("),
+      );
+      await q(
+        legacyFunction.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"),
+      );
     });
     const { backupPostgres, restorePostgres } =
       await import("../server/postgres-backup.mjs");
@@ -1205,7 +1401,7 @@ pgtest(
         journal,
       });
       assert.equal(result.schema, 3);
-      assert.deepEqual(await migrate(restore), { schema: 4, imported: false });
+      assert.deepEqual(await migrate(restore), { schema: 5, imported: false });
       assert.deepEqual(
         (await restore.query("SELECT * FROM admins ORDER BY id")).rows,
         before,
@@ -1226,8 +1422,8 @@ pgtest(
       await restore.close();
       await rm(dir, { recursive: true, force: true });
     }
-    assert.deepEqual(await migrate(owner), { schema: 4, imported: false });
-    assert.deepEqual(await migrate(owner), { schema: 4, imported: false });
+    assert.deepEqual(await migrate(owner), { schema: 5, imported: false });
+    assert.deepEqual(await migrate(owner), { schema: 5, imported: false });
     assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), before);
     assert.deepEqual(await q("SELECT * FROM sessions ORDER BY hash"), sessions);
     assert.deepEqual(
@@ -1235,7 +1431,7 @@ pgtest(
       versions,
     );
     assert.equal((await req(a, url(p, c.id))).statusCode, 200);
-    assert.equal((await req(main, url(p, c.id))).statusCode, 403);
+    assert.equal((await req(main, url(p, c.id))).statusCode, 404);
     await assert.rejects(
       app.db.query("UPDATE admins SET protected=0 WHERE id=$1", [main.id]),
       (e) => e.code === "23514",
@@ -1244,5 +1440,133 @@ pgtest(
       (await q("SELECT count(*) AS n FROM platform_prompt_links"))[0].n,
       0,
     );
+  },
+);
+
+pgtest(
+  "PostgreSQL: schema 4 upgrade and schema 5 restore preserve identities, personal profiles and private Admin history",
+  async () => {
+    const { main, p } = fixtures;
+    const before = await q("SELECT * FROM admins ORDER BY id");
+    const sessions = await q("SELECT * FROM sessions ORDER BY hash");
+    await maintenance(async () => {
+      await q("DROP TABLE account_profiles,admin_workspaces");
+      await q("DELETE FROM schema_version WHERE version=5");
+      const schema = await readFile(
+        new URL("../server/schema.sql", import.meta.url),
+        "utf8",
+      );
+      const legacyFunction = schema.slice(
+        schema.indexOf("CREATE FUNCTION public.chat_customer()"),
+        schema.indexOf("CREATE FUNCTION public.chat_access("),
+      );
+      await q(
+        legacyFunction.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"),
+      );
+    });
+    assert.deepEqual(await migrate(owner), { schema: 5, imported: false });
+    assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), before);
+    assert.deepEqual(await q("SELECT * FROM sessions ORDER BY hash"), sessions);
+    assert.equal(
+      (
+        await req(main, `/backoffice/api/staff/${main.id}/workspace`, "PUT", {
+          allowance: 500,
+          assignments: [{ projectId: p.id, versionId: p.v }],
+        })
+      ).statusCode,
+      200,
+    );
+    assert.equal(
+      (
+        await req(main, "/api/account/profile", "PUT", {
+          name: "Personal protected display",
+        })
+      ).statusCode,
+      200,
+    );
+    const c = await create(main, p);
+    await save(main, p, c, "Private Admin recovery fixture");
+    const { backupPostgres, restorePostgres } =
+      await import("../server/postgres-backup.mjs");
+    const { writeFile } = await import("node:fs/promises");
+    const dir = await mkdtemp(join(tmpdir(), "ai-account-recovery-"));
+    const restore = openPostgres(process.env.TEST_RESTORE_DATABASE_URL);
+    try {
+      await writeFile(join(dir, "vault.key"), key, { mode: 0o600 });
+      const journal = join(dir, "deletions.jsonl");
+      await writeFile(journal, "", { mode: 0o600 });
+      assert.equal(
+        (
+          await backupPostgres({
+            databaseUrl: uri("ai_migrator"),
+            state: dir,
+            destination: join(dir, "backup"),
+          })
+        ).schema,
+        5,
+      );
+      await restore.transaction(async () => {
+        await restore.query("SET LOCAL ROLE ai_owner");
+        await restore.query(
+          "DROP SCHEMA IF EXISTS private CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION ai_owner",
+        );
+      });
+      assert.equal(
+        (
+          await restorePostgres({
+            databaseUrl: process.env.TEST_RESTORE_DATABASE_URL,
+            backup: join(dir, "backup"),
+            journal,
+          })
+        ).schema,
+        5,
+      );
+      await restore.transaction(async () => {
+        await restore.query("SET LOCAL ROLE ai_owner");
+        assert.deepEqual(
+          (await restore.query("SELECT * FROM admins ORDER BY id")).rows,
+          before,
+        );
+        assert.equal(
+          (
+            await restore.query(
+              "SELECT display_name FROM account_profiles WHERE account_id=$1",
+              [main.id],
+            )
+          ).rows[0].display_name,
+          "Personal protected display",
+        );
+        assert.equal(
+          (
+            await restore.query(
+              "SELECT count(*) AS n FROM admin_workspaces WHERE account_id=$1",
+              [main.id],
+            )
+          ).rows[0].n,
+          1,
+        );
+        const message = (
+          await restore.query(
+            "SELECT * FROM private.messages WHERE conversation_id=$1",
+            [c.id],
+          )
+        ).rows[0];
+        assert.equal(
+          unseal(
+            key,
+            message.body_secret,
+            `chat-message:${message.customer_id}:${message.project_id}:${message.conversation_id}:${message.id}`,
+          ),
+          "Private Admin recovery fixture",
+        );
+        assert.equal(
+          (await restore.query("SELECT count(*) AS n FROM sessions")).rows[0].n,
+          0,
+        );
+      });
+    } finally {
+      await restore.close();
+      await rm(dir, { recursive: true, force: true });
+    }
   },
 );

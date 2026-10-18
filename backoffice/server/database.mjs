@@ -1,5 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { linkTable } from "./platform-schema.mjs";
+import { accountTables } from "./account-schema.mjs";
 export function openDatabase(path) {
   const db = new DatabaseSync(path);
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -52,6 +53,14 @@ export function openDatabase(path) {
     transaction(db, () => {
       db.exec(linkTable + "INSERT INTO schema_version VALUES(3);");
     });
+  if (
+    !db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='account_profiles'",
+      )
+      .get()
+  )
+    transaction(db, () => db.exec(accountTables));
   return db;
 }
 export function transaction(db, fn) {

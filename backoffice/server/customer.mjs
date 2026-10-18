@@ -18,7 +18,14 @@ export function installCustomer(
         const [{ customer }] = await query(
           "SELECT public.chat_customer() AS customer",
         );
-        if (!customer) fail(401, "Log ind for at fortsætte.");
+        if (!customer) {
+          if (r.session.role === "admin") {
+            if (r.routeOptions.url === "/api/customer/projects")
+              return { projects: [], aiEnabled: false };
+            fail(404, "Samtalen findes ikke.");
+          }
+          fail(401, "Log ind for at fortsætte.");
+        }
         return fn(customer);
       },
       { sessionHash: r.session.hash, shared: true },

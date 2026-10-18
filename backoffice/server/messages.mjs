@@ -1,5 +1,29 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Åbn administration, vælg Admins, og tildel en assistent til din konto.":
+    "Open administration, choose Admins and assign an assistant to your account.",
+  "Assistenter tildelt": "Assistants assigned",
+  "Profil opdateret": "Profile updated",
+  "Min konto": "My account",
+  "Åbn mit arbejdsrum": "Open my workspace",
+  "Åbn administration": "Open administration",
+  "Tildel assistenter": "Assign assistants",
+  "Admin bruger sit eget private arbejdsrum. Tildelingen giver ikke adgang til andres samtaler.":
+    "Admins use their own private workspace. Assignments do not give access to anyone else's conversations.",
+  "Dit navn er gemt.": "Your name has been saved.",
+  "Din profil": "Your profile",
+  "Gem navn": "Save name",
+  "Din adgang og ramme": "Your access and allowance",
+  "Dette er din tildelte ramme. Faktisk tokenforbrug og håndhævelse er endnu ikke aktiveret.":
+    "This is your assigned allowance. Actual token tracking and enforcement are not active yet.",
+  "Betalingshistorik og pakker vises, når betalingssystemet er tilsluttet.":
+    "Payment history and packages will appear when the payment system is connected.",
+  "Adgang til": "Access until",
+  "Dine assistenter": "Your assistants",
+  "Ingen assistenter tildelt endnu.": "No assistants assigned yet.",
+  Sikkerhed: "Security",
+  "Totrinslogin er påkrævet for din konto.":
+    "Two-factor sign-in is required for your account.",
   "Opsæt totrinslogin": "Set up two-factor sign-in",
   "Åbn din authenticator-app på telefonen, vælg Tilføj konto, og scan koden.":
     "Open your authenticator app on your phone, choose Add account and scan the code.",

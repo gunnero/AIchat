@@ -125,6 +125,47 @@ async function openConnection() {
   return { user, dialog };
 }
 
+test("the Admin account badge opens personal settings and the private workspace link is available", async () => {
+  mocked.mockImplementation(async (path) => {
+    if (path === "/auth/session") return session;
+    if (path === "/account")
+      return {
+        id: session.id,
+        allowance: 0,
+        projects: [],
+        expires: null,
+        billingAvailable: false,
+        usageAvailable: false,
+      };
+    return [];
+  });
+  render(<App />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "My account" }),
+  );
+  expect(screen.getByRole("dialog", { name: "My account" })).toBeVisible();
+  expect(screen.getByLabelText("Name")).toHaveValue(session.name);
+  expect(
+    screen.getByRole("link", { name: "Open my workspace" }),
+  ).toHaveAttribute("href", "/");
+});
+
+test("an Admin at the root uses their own frontend without loading backoffice customer lists", async () => {
+  history.replaceState(null, "", "/");
+  mocked.mockImplementation(async (path) => {
+    if (path === "/auth/session") return session;
+    if (path === "/customer/projects")
+      return { projects: [], aiEnabled: false };
+    throw new Error("Unexpected backoffice request");
+  });
+  render(<App />);
+  expect(
+    await screen.findByRole("link", { name: "Open administration" }),
+  ).toHaveAttribute("href", "/backoffice/");
+  expect(mocked).not.toHaveBeenCalledWith("/customers");
+  expect(screen.getByRole("button", { name: "My account" })).toBeVisible();
+});
+
 test.each(["en", "da"] as const)(
   "switching browser tabs preserves the connection dialog and its unsaved fields (%s)",
   async (language) => {

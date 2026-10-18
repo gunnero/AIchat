@@ -21,6 +21,7 @@ import {
 import { api, type Session } from "./client";
 import { t, useLanguage, LanguagePicker, getLanguage } from "./i18n";
 import "./customer.css";
+import { AccountDialog } from "./AccountPanel";
 
 type Project = { id: string; name: string; description: string };
 type Conversation = {
@@ -73,9 +74,11 @@ function Dialog({
 export function CustomerWorkspace({
   session,
   logout,
+  onNameChange,
 }: {
   session: Session;
   logout: () => void;
+  onNameChange?: (name: string) => void;
 }) {
   useLanguage();
   const [projects, setProjects] = useState<Project[] | null>(null),
@@ -100,6 +103,7 @@ export function CustomerWorkspace({
   const [drawer, setDrawer] = useState(false),
     [modal, setModal] = useState<"rename" | "delete" | null>(null),
     [rename, setRename] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
   const active = useRef(true),
     selection = useRef(""),
     listTicket = useRef(0),
@@ -506,16 +510,25 @@ export function CustomerWorkspace({
         )}
       </div>
       <div className="cw-person">
-        <span className="cw-avatar">
-          {session.name.slice(0, 1).toUpperCase()}
-        </span>
-        <div>
-          <strong>{session.name}</strong>
-          <small>
-            <LockKeyIcon />
-            {t("Privat konto · 2FA")}
-          </small>
-        </div>
+        <button
+          className="cw-profile"
+          aria-label={t("Min konto")}
+          onClick={() => {
+            setDrawer(false);
+            setAccountOpen(true);
+          }}
+        >
+          <span className="cw-avatar">
+            {session.name.slice(0, 1).toUpperCase()}
+          </span>
+          <div>
+            <strong>{session.name}</strong>
+            <small>
+              <LockKeyIcon />
+              {t("Privat konto · 2FA")}
+            </small>
+          </div>
+        </button>
         <button
           onClick={() => void signOut()}
           disabled={saving}
@@ -525,6 +538,11 @@ export function CustomerWorkspace({
           <SignOutIcon size={23} />
         </button>
       </div>
+      {session.role === "Admin" && (
+        <a className="cw-admin-link" href="/backoffice/">
+          {t("Åbn administration")}
+        </a>
+      )}
     </>
   );
   return (
@@ -631,7 +649,13 @@ export function CustomerWorkspace({
             <div className="cw-welcome">
               <LockKeyIcon size={42} />
               <h2>{t("Du har endnu ingen tildelte projekter.")}</h2>
-              <p>{t("Kontakt din administrator for at få adgang.")}</p>
+              <p>
+                {t(
+                  session.role === "Admin"
+                    ? "Åbn administration, vælg Admins, og tildel en assistent til din konto."
+                    : "Kontakt din administrator for at få adgang.",
+                )}
+              </p>
             </div>
           ) : !chatId ? (
             <div className="cw-welcome">
@@ -796,6 +820,15 @@ export function CustomerWorkspace({
             </div>
           </form>
         </Dialog>
+      )}
+      {accountOpen && (
+        <AccountDialog
+          key={session.id}
+          session={session}
+          onNameChange={onNameChange}
+          logout={logout}
+          close={() => setAccountOpen(false)}
+        />
       )}
     </div>
   );

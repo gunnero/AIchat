@@ -9,10 +9,13 @@ test("all Danish API messages and static UI text have translations, while user c
   for (const file of [
     "server/app.mjs",
     "server/accounts.mjs",
+    "server/account-area.mjs",
     "server/customer.mjs",
     "src/CustomerWorkspace.tsx",
     "src/SecurityConfirmation.tsx",
     "src/AuthenticatorSetup.tsx",
+    "src/AccountPanel.tsx",
+    "src/Dialog.tsx",
     "src/PromptImportForm.tsx",
     "src/PlatformPromptForm.tsx",
     "src/main.tsx",

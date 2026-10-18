@@ -21,6 +21,7 @@ import {
 import { installAccounts, username } from "./accounts.mjs";
 import { translate } from "./messages.mjs";
 import { installCustomer } from "./customer.mjs";
+import { installAccountArea } from "./account-area.mjs";
 import { checkOpenAI } from "./provider.mjs";
 import { promptImport, MAX_IMPORT_BYTES } from "./prompt-bundle.mjs";
 const P = "/backoffice/api",
@@ -174,13 +175,13 @@ export async function buildServer({
   const activeAccount = async (id) =>
     await db
       .prepare(
-        `SELECT admins.* FROM admins LEFT JOIN customers ON customers.id=admins.customer_id
+        `SELECT admins.*,(SELECT display_name FROM account_profiles WHERE account_id=admins.id) AS display_name FROM admins LEFT JOIN customers ON customers.id=admins.customer_id
     WHERE admins.id=? AND admins.status='active' AND (admins.role='admin' OR (customers.status='active' AND (customers.expires IS NULL OR customers.expires>=?)))`,
       )
       .get(id, new Date(clock()).toISOString().slice(0, 10));
   const sessionDto = (a, sid) => ({
     id: a.id,
-    name: a.name,
+    name: a.display_name || a.name,
     email: a.email,
     username: a.username,
     locale: a.locale,
@@ -218,7 +219,12 @@ export async function buildServer({
         "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
     });
     const path = r.routeOptions.url || r.url.split("?")[0];
-    if (!path.startsWith(P + "/") && !path.startsWith("/api/customer/")) return;
+    if (
+      !path.startsWith(P + "/") &&
+      !path.startsWith("/api/customer/") &&
+      !["/api/account", "/api/account/profile"].includes(path)
+    )
+      return;
     const setup = path === P + "/setup";
     if (setup) {
       if (!(await localSetup(r))) fail(404, "Siden findes ikke.");
@@ -243,7 +249,7 @@ export async function buildServer({
       sid &&
       (await db
         .prepare(
-          "SELECT sessions.*,admins.name,admins.email,admins.username,admins.role,admins.locale,admins.customer_id FROM sessions JOIN admins ON admins.id=sessions.admin_id WHERE hash=?",
+          "SELECT sessions.*,COALESCE(account_profiles.display_name,admins.name) AS name,admins.email,admins.username,admins.role,admins.locale,admins.customer_id FROM sessions JOIN admins ON admins.id=sessions.admin_id LEFT JOIN account_profiles ON account_profiles.account_id=admins.id WHERE hash=?",
         )
         .get(digest(sid)));
     if (
@@ -271,14 +277,12 @@ export async function buildServer({
     if (
       session.role !== "admin" &&
       !common.some((p) => path === P + p) &&
+      !["/api/account", "/api/account/profile"].includes(path) &&
       path !== P + "/customer/home" &&
       !path.startsWith("/api/customer/")
     )
       fail(403, "Adgang nægtet.");
-    if (
-      session.role === "admin" &&
-      (path === P + "/customer/home" || path.startsWith("/api/customer/"))
-    )
+    if (session.role === "admin" && path === P + "/customer/home")
       fail(403, "Adgang nægtet.");
     r.session = session;
     r.adminId = session.admin_id;
@@ -316,7 +320,9 @@ export async function buildServer({
     if (reply.statusCode < 400 && r.privateProject && customer)
       await customer.checkAccess(r);
     if (
-      (r.url.startsWith(P + "/") || r.url.startsWith("/api/customer/")) &&
+      (r.url.startsWith(P + "/") ||
+        r.url.startsWith("/api/customer/") ||
+        r.url.startsWith("/api/account")) &&
       reply.getHeader("content-type")?.includes("application/json") &&
       typeof payload === "string"
     ) {
@@ -534,6 +540,7 @@ export async function buildServer({
         );
       }
       const sid = token();
+      let signedIn;
       await transaction(db, async () => {
         const current = await activeAccount(admin.id);
         if (!current || current.password_hash !== admin.password_hash)
@@ -541,6 +548,7 @@ export async function buildServer({
             401,
             "Login blev ikke godkendt. Kontrollér e-mail, adgangskode og en ny authenticator-kode.",
           );
+        signedIn = current;
         if (r.session) await stillAuthorized(r);
         if (r.cookies[SID])
           await db
@@ -570,7 +578,7 @@ export async function buildServer({
         path: "/backoffice",
       });
       reply.clearCookie("bo_session", cookieOptions);
-      return sessionDto(admin, sid);
+      return sessionDto(signedIn, sid);
     },
   );
   app.get(P + "/auth/session", async (r) => sessionDto(r.session, r.sessionId));
@@ -652,9 +660,15 @@ export async function buildServer({
     cookieOptions,
     mailer,
   });
+  installAccountArea(app, { fail, fresh, stillAuthorized, stamp, audit });
   app.get(P + "/overview", async () => ({
-    customers: (await db.prepare("SELECT count(*) AS n FROM customers").get())
-      .n,
+    customers: (
+      await db
+        .prepare(
+          "SELECT count(*) AS n FROM customers WHERE NOT EXISTS(SELECT 1 FROM admin_workspaces WHERE customer_id=customers.id)",
+        )
+        .get()
+    ).n,
     projects: (await db.prepare("SELECT count(*) AS n FROM projects").get()).n,
     connections: (
       await db.prepare("SELECT count(*) AS n FROM connections").get()
@@ -666,10 +680,20 @@ export async function buildServer({
       await Promise.all(
         (
           await db
-            .prepare("SELECT * FROM customers ORDER BY created_at DESC")
+            .prepare(
+              "SELECT * FROM customers WHERE NOT EXISTS(SELECT 1 FROM admin_workspaces WHERE customer_id=customers.id) ORDER BY created_at DESC",
+            )
             .all()
         ).map(async (c) => ({
           ...c,
+          name:
+            (
+              await db
+                .prepare(
+                  "SELECT account_profiles.display_name FROM account_profiles JOIN admins ON admins.id=account_profiles.account_id WHERE admins.customer_id=?",
+                )
+                .get(c.id)
+            )?.display_name || c.name,
           account: await (async () => {
             const a = await db
               .prepare(
@@ -701,6 +725,15 @@ export async function buildServer({
           ?.id;
     await transaction(db, async () => {
       if (r.session) await stillAuthorized(r);
+      if (
+        !create &&
+        (await db
+          .prepare(
+            "SELECT account_id FROM admin_workspaces WHERE customer_id=?",
+          )
+          .get(id))
+      )
+        fail(404, "Kunden findes ikke.");
       const currentAccount =
         accountId &&
         (await db.prepare("SELECT * FROM admins WHERE id=?").get(accountId));
@@ -748,6 +781,9 @@ export async function buildServer({
           await db
             .prepare("UPDATE admins SET name=?,locale=? WHERE id=?")
             .run(v.name, v.locale, accountId);
+          await db
+            .prepare("DELETE FROM account_profiles WHERE account_id=?")
+            .run(accountId);
           if (v.status !== "active")
             await db
               .prepare("DELETE FROM sessions WHERE admin_id=?")

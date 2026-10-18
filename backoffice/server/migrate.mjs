@@ -3,10 +3,13 @@ import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { openPostgres } from "./postgres.mjs";
 import { postgresUpgrade } from "./platform-schema.mjs";
+import { accountUpgrade } from "./account-schema.mjs";
 
 const tables = [
   "customers",
   "admins",
+  "account_profiles",
+  "admin_workspaces",
   "connections",
   "projects",
   "prompt_versions",
@@ -48,18 +51,25 @@ export async function migrate(db, sqlitePath) {
           await db.query("SELECT max(version) AS v FROM schema_version")
         ).rows[0].v;
         if (version === 3) await db.query(postgresUpgrade);
-        else if (version !== 4) throw new Error("Unsupported schema");
-        return { schema: 4, imported: false };
+        else if (![4, 5].includes(version))
+          throw new Error("Unsupported schema");
+        if (version < 5) await db.query(accountUpgrade);
+        return { schema: 5, imported: false };
       }
       await db.query(
         await readFile(new URL("./schema.sql", import.meta.url), "utf8"),
       );
       await db.query(postgresUpgrade);
+      await db.query(accountUpgrade);
       let records = 0;
       if (source)
         for (const table of tables) {
           if (
-            table === "platform_prompt_links" &&
+            [
+              "platform_prompt_links",
+              "account_profiles",
+              "admin_workspaces",
+            ].includes(table) &&
             !source
               .prepare(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
@@ -95,7 +105,7 @@ export async function migrate(db, sqlitePath) {
         }
       // Session and in-progress setup/registration cookies are intentionally
       // invalidated once; enrolled credentials and pending invitations survive.
-      return { schema: 4, imported: !!source, records };
+      return { schema: 5, imported: !!source, records };
     });
   } finally {
     source?.close();

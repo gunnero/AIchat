@@ -171,9 +171,27 @@
   align-items: center;
   gap: 11px;
 }
-.cw-person > div {
+.cw-profile > div {
   min-width: 0;
   flex: 1;
+}
+.cw-person > .cw-profile {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  flex: 1;
+  padding: 5px 0;
+  text-align: left;
+}
+.cw-profile:hover strong {
+  text-decoration: underline;
+}
+.cw-admin-link {
+  display: block;
+  padding: 14px 0 0;
+  color: #fff;
+  font-weight: 600;
 }
 .cw-person strong {
   display: block;

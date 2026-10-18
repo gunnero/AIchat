@@ -24,7 +24,10 @@ export async function api<T>(
   csrf?: string,
 ): Promise<T> {
   const response = await fetch(
-    (path.startsWith("/customer/") || path.startsWith("/auth/")
+    (path.startsWith("/customer/") ||
+    path.startsWith("/auth/") ||
+    path === "/account" ||
+    path.startsWith("/account/")
       ? "/api"
       : "/backoffice/api") + path,
     {
