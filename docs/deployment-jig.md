@@ -12,8 +12,8 @@ Deployment status on 18 October 2026: **live and verified at [https://ai.igurl.d
 | Web server | Apache; Virtualmin child server of `igurl.dk` |
 | Release owner | `igurl` |
 | Site directory | `/home/igurl/domains/ai.igurl.dk` |
-| Web root | `public_html`, a symlink to `releases/a32f2c516e4f224933c027e30bc4629797643220` |
-| Application revision | `a32f2c516e4f224933c027e30bc4629797643220`, branch `codex/foundation-prototype` |
+| Web root | `public_html`, a symlink to `releases/c112761797fa70f9018ec20027d358130431bf6c` |
+| Application revision | `c112761797fa70f9018ec20027d358130431bf6c`, branch `codex/foundation-prototype` |
 | Apache vhost | `/etc/apache2/sites-available/ai.igurl.dk.conf` |
 | Scoped static settings | `/etc/apache2/ai-demo-common.conf` |
 | ACME web root | `/home/igurl/domains/ai.igurl.dk/acme` |
@@ -31,7 +31,11 @@ The uploaded bundle also includes a generated `release.json` containing its sour
 
 On 18 October, the approved black-and-white palette was deployed from `a32f2c5` after both CI checks passed. The release archive SHA-256 is `cb3f2426d5bdee914ca02689da917b59c7d8d19e74991d25953e41bd7a91356a`. All 13 release files matched their checksums through public HTTPS after activation. The live browser rendered the monochrome UI without console warnings/errors. Application behavior and hosting configuration were unchanged.
 
-Release files are readable static assets. PHP, CGI, server-side includes, directory listing and `.htaccess` overrides are disabled for this site. CSP allows only local scripts, styles and fonts and disallows network API requests. HTML and release metadata revalidate; fingerprinted assets have immutable caching. Gzip was verified for JavaScript (305,362 bytes uncompressed; 91,528 transferred compressed). These controls support demo hosting and do not establish production security or GDPR compliance.
+The later project/prompt-assignment update on 18 October deployed `c112761` after both CI checks passed (25 behavior tests and four retained worker checks). Archive SHA-256: `8082c8433b948f1c3d6672b9dcc8789f445ce6bc0423ef895c5c4f2612062122`. All 13 files matched through public HTTPS, and the live browser verified the project switcher and per-customer assignment controls without console warnings/errors. No hosting configuration, DNS, credentials or service restarts were involved. Real Platform import and authenticated memberships remain AK-060–062.
+
+For this rollout, public IPv4 checks passed. The developer Mac had no IPv6 route at verification time; jig's IPv6 address/listener and an IPv6 HTTPS health request from jig itself passed. The existing AAAA record was retained. This is a limit on the current external check, not an additional public IPv6 verification claim.
+
+Release files are readable static assets. PHP, CGI, server-side includes, directory listing and `.htaccess` overrides are disabled for this site. CSP allows only local scripts, styles and fonts and disallows network API requests. HTML and release metadata revalidate; fingerprinted assets have immutable caching. Gzip was verified for JavaScript on the initial deployment. These controls support demo hosting and do not establish production security or GDPR compliance.
 
 ## DNS, HTTPS and renewal
 
@@ -80,6 +84,8 @@ HTTPS-specific backups from 18 October are under `/root/123url-config-backups/ai
 The site's initial placeholder web root is preserved in both `backups/initial-public-html-20261016.tar.gz` and `backups/public_html.initial-20261016`. There was no existing application or database in this newly created child site.
 
 Before the monochrome release, the previous working app was freshly backed up as `backups/before-monochrome-20261018T092148Z.tar.gz` (SHA-256 `aaf88166516019672f4ff105329ce9c1c8709ffa8bf63971097199e36869cab6`). Its previous symlink target was recorded beside the archive. Release `43ef3614d760f238faad34351f6c61f93a54e308` is also retained for immediate rollback.
+
+Before the project-assignment release, the working monochrome app was freshly backed up as `backups/before-project-assignments-20261018T111013Z.tar.gz` (SHA-256 `d128811eb01d47e63eee30f1fdcc564ee22d952754d741a6a8757ad8bc120215`). Its symlink target was recorded beside the archive, and release `a32f2c516e4f224933c027e30bc4629797643220` remains available for rollback. Extraction, checksum validation and atomic activation ran as `igurl` through the verified Mac → web01 → jig route.
 
 For later demo releases, create a new `releases/<full-revision>` as `igurl`, verify all checksums before activation, and atomically replace the `public_html` symlink using a temporary sibling symlink and `mv -Tf`. Retain the previous target. To roll back, atomically point `public_html` back to that retained release and verify `release.json`. Restoring the placeholder uses the same approach with `backups/public_html.initial-20261016` as the target. Do not delete or overwrite old releases during activation.
 
