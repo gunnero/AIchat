@@ -2,7 +2,7 @@
 
 18 October 2026. The administrator application in `backoffice/` is a separate service from the synthetic customer demo in `app/`. The approved monochrome design is retained. No existing demo fixtures are migrated into the real database.
 
-Deployed at [https://ai.igurl.dk/backoffice/](https://ai.igurl.dk/backoffice/) from `ad7ba8c`, with first-owner enrollment handed to the owner through the private setup bridge. See [verified deployment and rollback](deployment-jig.md#administrator-service-deployment--18-october-2026). The runtime starts with no administrator or example customers/keys. Projects and prompt versions can be prepared before adding the first API connection; once a configured project has versions, its existing connection is preserved.
+Deployed at [https://ai.igurl.dk/backoffice/](https://ai.igurl.dk/backoffice/) from `2ffdd5f`, with first-owner enrollment handed to the owner through the private setup bridge. See [verified deployment and rollback](deployment-jig.md#administrator-service-deployment--18-october-2026). The runtime starts with no administrator or example customers/keys. Projects and prompt versions can be prepared before adding the first API connection; once a configured project has versions, its existing connection is preserved.
 
 ## This release
 
@@ -82,7 +82,7 @@ An authorized operator starts the private bridge through the existing jig route,
 python3 deploy/jig/open-admin-setup.py
 ```
 
-The bridge obtains the private server's `bootstrap.token` through authorized SSH, without printing or persisting it, and injects it only into enrollment requests. A plain loopback request without the token is denied, including requests by another site's Unix user. Then the owner opens `http://127.0.0.1:8765/backoffice/?setup=1`, enters their name/email, creates a password and confirms their authenticator. HTTP here stays inside the trusted local machine and the encrypted SSH tunnel. Setup requests fail if forwarded through the public website. After enrollment, the setup endpoint is disabled, and the owner signs in over public HTTPS. Close the helper with Ctrl+C when finished. Never screenshot, log or copy the enrollment seed into the repository or conversation.
+The bridge obtains the private server's `bootstrap.token` through authorized SSH, without printing or persisting it, and injects it only into enrollment requests. jig disables generic TCP forwarding; the helper uses the existing SSH command channel to perform fixed loopback HTTP requests, without changing SSH configuration or opening a server port. A plain loopback request without the token is denied, including requests by another site's Unix user. Then the owner opens `http://127.0.0.1:8765/backoffice/?setup=1`, enters their name/email, creates a password and confirms their authenticator. HTTP here stays inside the trusted local machine and the encrypted SSH command channel. Setup requests fail if forwarded through the public website. After enrollment, the setup endpoint is disabled, and the owner signs in over public HTTPS. Close the helper with Ctrl+C when finished. Never screenshot, log or copy the enrollment seed into the repository or conversation.
 
 ## Backup and recovery baseline
 
