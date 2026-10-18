@@ -5,6 +5,7 @@ import { openPostgres } from "./postgres.mjs";
 import { postgresUpgrade } from "./platform-schema.mjs";
 import { accountUpgrade } from "./account-schema.mjs";
 import { appearanceUpgrade } from "./appearance-schema.mjs";
+import { reportingUpgrade } from "./reporting-schema.mjs";
 
 const tables = [
   "customers",
@@ -14,6 +15,7 @@ const tables = [
   "connections",
   "projects",
   "project_appearance",
+  "usage_reporting",
   "prompt_versions",
   "platform_prompt_links",
   "assignments",
@@ -53,11 +55,12 @@ export async function migrate(db, sqlitePath) {
           await db.query("SELECT max(version) AS v FROM schema_version")
         ).rows[0].v;
         if (version === 3) await db.query(postgresUpgrade);
-        else if (![4, 5, 6].includes(version))
+        else if (![4, 5, 6, 7].includes(version))
           throw new Error("Unsupported schema");
         if (version < 5) await db.query(accountUpgrade);
         if (version < 6) await db.query(appearanceUpgrade);
-        return { schema: 6, imported: false };
+        if (version < 7) await db.query(reportingUpgrade);
+        return { schema: 7, imported: false };
       }
       await db.query(
         await readFile(new URL("./schema.sql", import.meta.url), "utf8"),
@@ -65,6 +68,7 @@ export async function migrate(db, sqlitePath) {
       await db.query(postgresUpgrade);
       await db.query(accountUpgrade);
       await db.query(appearanceUpgrade);
+      await db.query(reportingUpgrade);
       let records = 0;
       if (source)
         for (const table of tables) {
@@ -74,6 +78,7 @@ export async function migrate(db, sqlitePath) {
               "account_profiles",
               "admin_workspaces",
               "project_appearance",
+              "usage_reporting",
             ].includes(table) &&
             !source
               .prepare(
@@ -110,7 +115,7 @@ export async function migrate(db, sqlitePath) {
         }
       // Session and in-progress setup/registration cookies are intentionally
       // invalidated once; enrolled credentials and pending invitations survive.
-      return { schema: 6, imported: !!source, records };
+      return { schema: 7, imported: !!source, records };
     });
   } finally {
     source?.close();

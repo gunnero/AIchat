@@ -24,6 +24,7 @@ async function fixture(
   t,
   {
     providerCheck = async () => "ok",
+    reportReader,
     dbPath = ":memory:",
     vaultKey = randomBytes(32),
     passwordCheck,
@@ -38,6 +39,7 @@ async function fixture(
     localOrigin,
     clock: () => now,
     providerCheck,
+    reportReader,
     passwordCheck,
     mailer,
     bootstrapHash: digest("synthetic-owner-enrollment-token"),
@@ -168,6 +170,263 @@ async function fixture(
     advance: (ms) => (now += ms),
   };
 }
+const reportingFixtureKey = "sk-admin-synthetic-reporting-only-not-live";
+const reportFixture = (start, end) => ({
+  start,
+  end,
+  currency: "usd",
+  totals: {
+    costUsd: "2.25",
+    inputTokens: 2000,
+    outputTokens: 500,
+    requests: 3,
+  },
+  projects: [
+    {
+      projectRef: "proj_synthetic_test",
+      costUsd: "2.25",
+      inputTokens: 2000,
+      outputTokens: 500,
+      requests: 3,
+    },
+  ],
+  days: [],
+});
+test("usage overview shows configured allowances once, hides all private content and performs no provider reads without a reporting key", async (t) => {
+  let calls = 0;
+  const f = await fixture(t, {
+    reportReader: async () => {
+      calls++;
+      throw new Error("Unexpected provider call");
+    },
+  });
+  assert.equal((await f.req("/usage")).statusCode, 401);
+  await f.owner();
+  const p1 = await f.project("First"),
+    p2 = await f.project("Second"),
+    v1 = await f.prompt(p1),
+    v2 = await f.prompt(p2);
+  assert.equal(
+    (
+      await f.req("/customers", "POST", {
+        name: "Allowance test",
+        email: "allowance@example.test",
+        locale: "en",
+        status: "active",
+        expires: null,
+        allowance: 300,
+        assignments: [
+          { projectId: p1, versionId: v1 },
+          { projectId: p2, versionId: v2 },
+        ],
+      })
+    ).statusCode,
+    200,
+  );
+  const overview = await f.req("/usage");
+  assert.equal(overview.statusCode, 200);
+  assert.equal(overview.json().totalAllowance, 300);
+  assert.equal(overview.json().appTrackingEnabled, false);
+  assert.equal(overview.json().connection, null);
+  assert.equal(
+    overview.json().accounts.find((a) => a.role === "Customer").projects.length,
+    2,
+  );
+  assert.ok(
+    !/protected|password_hash|mfa_secret|instructions|key_secret|Private synthetic instructions/.test(
+      overview.body,
+    ),
+  );
+  assert.equal((await f.req("/usage/openai?month=2026-10")).statusCode, 409);
+  assert.equal(calls, 0);
+});
+test("reporting key save/replace/disconnect are verified, encrypted, revision-bound and require fresh MFA", async (t) => {
+  let reject = false,
+    calls = 0;
+  const f = await fixture(t, {
+    reportReader: async (key, start, end) => {
+      calls++;
+      if (reject) {
+        const e = new Error("sensitive upstream " + key);
+        e.code = "restricted";
+        throw e;
+      }
+      return reportFixture(start, end);
+    },
+  });
+  await f.owner();
+  const payload = {
+    label: "Reporting",
+    apiKey: reportingFixtureKey,
+    revision: 0,
+  };
+  assert.equal(
+    (
+      await f.req("/usage/connection", "POST", {
+        ...payload,
+        apiKey: fixtureKey,
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(calls, 0);
+  assert.equal(
+    (await f.req("/usage/connection", "POST", payload)).statusCode,
+    200,
+  );
+  const stored = f.app.db.prepare("SELECT * FROM usage_reporting").get();
+  assert.notEqual(stored.key_secret, reportingFixtureKey);
+  assert.equal(
+    unseal(f.vaultKey, stored.key_secret, "usage-reporting:1"),
+    reportingFixtureKey,
+  );
+  const dto = (await f.req("/usage")).json();
+  assert.equal(dto.connection.suffix, reportingFixtureKey.slice(-4));
+  assert.equal(dto.connectionRevision, 1);
+  assert.ok(!JSON.stringify(dto).includes(reportingFixtureKey));
+  reject = true;
+  const failed = await f.req("/usage/connection", "POST", {
+    ...payload,
+    apiKey: reportingFixtureKey + "replacement",
+    revision: 1,
+  });
+  assert.equal(failed.statusCode, 502);
+  assert.ok(!failed.body.includes(reportingFixtureKey));
+  assert.equal(
+    f.app.db.prepare("SELECT key_secret FROM usage_reporting").get().key_secret,
+    stored.key_secret,
+  );
+  f.advance(11 * 60 * 1000);
+  const before = calls;
+  const stale = await f.req("/usage/connection", "DELETE", { revision: 1 });
+  assert.equal(stale.statusCode, 403);
+  assert.equal(stale.json().code, "reauth_required");
+  assert.equal(calls, before);
+  await f.req("/auth/reauth", "POST", {
+    code: otp(f.secret).generate({ timestamp: f.now }),
+  });
+  assert.equal(
+    (await f.req("/usage/connection", "DELETE", { revision: 1 })).statusCode,
+    200,
+  );
+  const disconnected = (await f.req("/usage")).json();
+  assert.equal(disconnected.connection, null);
+  assert.equal(disconnected.connectionRevision, 2);
+  assert.equal(
+    f.app.db.prepare("SELECT key_secret FROM usage_reporting").get().key_secret,
+    null,
+  );
+  assert.equal(
+    (await f.req("/usage/connection", "POST", payload)).statusCode,
+    409,
+  );
+  assert.ok(!(await f.req("/audit")).body.includes(reportingFixtureKey));
+});
+test("a report pending across disconnect and reconnect never returns stale organisation totals", async (t) => {
+  let hold = false,
+    finish,
+    started;
+  const wait = new Promise((r) => {
+      finish = r;
+    }),
+    ready = new Promise((r) => {
+      started = r;
+    });
+  const f = await fixture(t, {
+    reportReader: async (key, start, end) => {
+      if (hold) {
+        hold = false;
+        started();
+        await wait;
+      }
+      return reportFixture(start, end);
+    },
+  });
+  await f.owner();
+  const payload = {
+    label: "Old organisation",
+    apiKey: reportingFixtureKey,
+    revision: 0,
+  };
+  assert.equal(
+    (await f.req("/usage/connection", "POST", payload)).statusCode,
+    200,
+  );
+  hold = true;
+  const pending = f.req("/usage/openai?month=2026-10");
+  await ready;
+  assert.equal(
+    (await f.req("/usage/connection", "DELETE", { revision: 1 })).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await f.req("/usage/connection", "POST", {
+        ...payload,
+        label: "New organisation",
+        revision: 2,
+      })
+    ).statusCode,
+    200,
+  );
+  finish();
+  const response = await pending;
+  assert.equal(response.statusCode, 409);
+  assert.ok(!response.body.includes("2.25"));
+  assert.equal((await f.req("/usage")).json().connectionRevision, 3);
+  for (const month of ["2026-13", "2027-01", "2020-01"])
+    assert.equal((await f.req("/usage/openai?month=" + month)).statusCode, 400);
+});
+
+test("a pending reporting-key check cannot save after sign-out or MFA freshness expires", async (t) => {
+  for (const event of ["logout", "stale-mfa"]) {
+    let finish,
+      started,
+      hold = false;
+    const pending = new Promise((r) => {
+        finish = r;
+      }),
+      ready = new Promise((r) => {
+        started = r;
+      });
+    const f = await fixture(t, {
+      reportReader: async (key, start, end) => {
+        if (hold) {
+          started();
+          await pending;
+        }
+        return reportFixture(start, end);
+      },
+    });
+    await f.owner();
+    const body = { label: "Reports", apiKey: reportingFixtureKey, revision: 0 };
+    assert.equal(
+      (await f.req("/usage/connection", "POST", body)).statusCode,
+      200,
+    );
+    const before = f.app.db
+      .prepare("SELECT key_secret FROM usage_reporting")
+      .get().key_secret;
+    hold = true;
+    const saving = f.req("/usage/connection", "POST", {
+      ...body,
+      revision: 1,
+      apiKey: reportingFixtureKey + "replacement",
+    });
+    await ready;
+    if (event === "logout") await f.req("/auth/logout", "POST", {});
+    else f.advance(11 * 60 * 1000);
+    finish();
+    const result = await saving;
+    assert.equal(result.statusCode, event === "logout" ? 401 : 403);
+    assert.equal(
+      f.app.db.prepare("SELECT key_secret FROM usage_reporting").get()
+        .key_secret,
+      before,
+    );
+  }
+});
+
 test("all customer, project, prompt, connection and audit reads/writes require a real session", async (t) => {
   const f = await fixture(t);
   for (const path of [

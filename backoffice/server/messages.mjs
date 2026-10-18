@@ -1,5 +1,90 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  Projekt: "Project",
+  Bruger: "User",
+  "Forbrug og udgifter": "Usage & costs",
+  "Overblik over forbrug og rammer": "Your usage and allowances at a glance",
+  "Se tildelte rammer og OpenAI-udgifter. Samtalerne forbliver private.":
+    "See assigned allowances and OpenAI costs. Conversations stay private.",
+  "Tal for appen og din tilsluttede OpenAI-organisation vises hver for sig.":
+    "App figures and your connected OpenAI organisation are shown separately.",
+  "Opdatér overblik": "Refresh overview",
+  "OpenAI-forbrug og udgifter": "OpenAI usage and spending",
+  "Se i OpenAI": "View in OpenAI",
+  "Tilslut OpenAI-rapportering": "Connect OpenAI reporting",
+  "Tilføj en Admin API-nøgle for at se organisationens faktiske udgifter og modeltokens. Projektnøgler giver ikke denne rapportadgang.":
+    "Add an Admin API key to see the organisation’s reported spending and model tokens. Project keys do not provide this reporting access.",
+  "Tilslut rapportering": "Connect reporting",
+  Rapporteringsnøgle: "Reporting key",
+  "Afbryd rapportering": "Disconnect reporting",
+  "Måned · UTC": "Month · UTC",
+  "OpenAI-udgifter · USD": "OpenAI spending · USD",
+  "Rapporteret af OpenAI": "Reported by OpenAI",
+  Modeltokens: "Model tokens",
+  "Input og output; cachetokens tælles én gang":
+    "Input and output; cached tokens counted once",
+  Modelkald: "Model requests",
+  "I den valgte måned": "For the selected month",
+  "Henter OpenAI-rapport…": "Loading OpenAI report…",
+  "Senest hentet": "Last fetched",
+  "OpenAI-forbrug pr. projekt": "OpenAI usage by project",
+  "OpenAI-projekt": "OpenAI project",
+  Inputtokens: "Input tokens",
+  Outputtokens: "Output tokens",
+  "Udgifter · USD": "Spending · USD",
+  "Øvrigt OpenAI-projekt": "Other OpenAI project",
+  "Ikke fordelt på projekt": "Not allocated to a project",
+  "OpenAI har endnu ikke rapporteret forbrug i denne periode.":
+    "OpenAI has not reported usage for this period yet.",
+  "Vis dagligt forbrug": "Show daily breakdown",
+  "Dagligt OpenAI-forbrug": "Daily OpenAI usage",
+  "Dato · UTC": "Date · UTC",
+  "OpenAI-totaler omfatter også Platform-tests og andre værktøjer i den tilsluttede organisation. Modeltokens omfatter modelkald; øvrige betalte tjenester kan indgå i udgifterne. Tallene kan blive opdateret med forsinkelse og er ikke kundebetalinger.":
+    "OpenAI totals also include Platform tests and other tools in the connected organisation. Model tokens cover model requests; spending can include other paid services. Figures may arrive later and are not customer payments.",
+  "DENNE APP": "THIS APP",
+  "Brugere og tildelte rammer": "Users and assigned allowances",
+  "Administrér kunder": "Manage customers",
+  "Tildelt svarramme i alt": "Total assigned response allowance",
+  "Svar, ikke tokens eller penge": "Responses, not tokens or money",
+  "AI-svar er endnu ikke aktiveret i appen. Tokens, brugt beløb og resterende saldo pr. bruger er derfor ikke målt. Den tildelte svarramme håndhæves endnu ikke.":
+    "AI replies are not enabled in the app yet. Tokens, spending and remaining balance per user are therefore not measured. The assigned response allowance is not enforced yet.",
+  "Søg efter bruger": "Search users",
+  "Navn eller e-mail": "Name or email",
+  "Alle projekter": "All projects",
+  "Brugte tokens": "Tokens used",
+  "Brugt beløb · USD": "Spent · USD",
+  "Ikke målt": "Not measured",
+  "Ingen brugere matcher filtrene.": "No users match the filters.",
+  "Rammen gemmes pr. person og vises én gang, selv når flere projekter er tildelt. OpenAI-udgifter fordeles ikke automatisk på appens brugere. Samtaletitler og beskeder vises aldrig her.":
+    "The allowance is stored per person and shown once, even with several assigned projects. OpenAI costs are not automatically allocated to app users. Conversation titles and messages are never shown here.",
+  "Opret en særskilt OpenAI Admin API-nøgle med adgang til Usage og Costs. Appen bruger den kun til at læse rapporter. Den erstatter ikke projekternes chatnøgler.":
+    "Create a dedicated OpenAI Admin API key with access to Usage and Costs. This app uses it only to read reports. It does not replace project chat keys.",
+  "Navn på rapporteringsforbindelsen": "Reporting connection name",
+  "OpenAI Admin API-nøgle": "OpenAI Admin API key",
+  "Nøglen sendes sikkert til serveren, kontrolleres og gemmes krypteret. Den vises aldrig igen. En afvist ny nøgle ændrer ikke den eksisterende forbindelse.":
+    "The key is sent securely to the server, checked and stored encrypted. It is never displayed again. A rejected new key leaves the existing connection unchanged.",
+  "Åbn OpenAI Admin-nøgler": "Open OpenAI Admin keys",
+  "OpenAI-rapportering er tilsluttet.": "OpenAI reporting is connected.",
+  "OpenAI-rapportering er afbrudt.": "OpenAI reporting is disconnected.",
+  "Rapporteringsnøglen fjernes fra appen. OpenAI-kontoen og projektforbindelserne ændres ikke.":
+    "The reporting key is removed from the app. Your OpenAI account and project connections remain unchanged.",
+  "Rapporteringsnøglen blev afvist. Den eksisterende forbindelse er bevaret.":
+    "The reporting key was rejected. The existing connection is unchanged.",
+  "Nøglen mangler adgang til OpenAI Usage og Costs. Brug en Admin API-nøgle.":
+    "The key cannot access OpenAI Usage and Costs. Use an Admin API key.",
+  "OpenAI begrænser rapporteringen midlertidigt. Prøv igen senere.":
+    "OpenAI is temporarily limiting reports. Try again later.",
+  "OpenAI-rapporten kunne ikke hentes fuldstændigt. Prøv igen. Ingen delvise totaler vises.":
+    "The complete OpenAI report could not be loaded. Try again. Partial totals are not displayed.",
+  "Brug en OpenAI Admin API-nøgle til rapportering, ikke en projektnøgle.":
+    "Use an OpenAI Admin API key for reporting, rather than a project key.",
+  "Rapporteringsforbindelsen er ændret. Genindlæs siden.":
+    "The reporting connection changed. Refresh the page.",
+  "Vælg en måned inden for de seneste 24 måneder.":
+    "Choose a month within the last 24 months.",
+  "Tilslut OpenAI-rapportering først.": "Connect OpenAI reporting first.",
+  "Rapportering tilsluttet": "Reporting connected",
+  "Rapportering afbrudt": "Reporting disconnected",
   "Farve på arbejdsrum": "Workspace colour",
   "Sidemenuen bruger denne farve, når projektet er valgt.":
     "The sidebar uses this colour when this project is selected.",

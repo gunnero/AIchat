@@ -6,6 +6,11 @@ import { AuthenticatorSetup } from "./AuthenticatorSetup";
 import { Dialog } from "./Dialog";
 import { AccountPanel } from "./AccountPanel";
 import {
+  UsagePage,
+  ReportingConnectionForm,
+  type ReportingConnection,
+} from "./UsagePage";
+import {
   projectColors,
   projectColor,
   type ProjectColor,
@@ -32,6 +37,7 @@ import {
   ArrowRightIcon,
   LockKeyIcon,
   ArrowClockwiseIcon,
+  ChartBarIcon,
 } from "@phosphor-icons/react";
 
 type Invitation = { id: string; status: string; expires: number } | null;
@@ -109,6 +115,11 @@ type Data = {
   audit: Audit[];
   staff: Account[];
 };
+type ReportingSetup = {
+  id: "usage-reporting";
+  connection: ReportingConnection | null;
+  revision: number;
+};
 const empty: Data = {
   customers: [],
   connections: [],
@@ -123,6 +134,7 @@ const tabs = () => [
   { id: "projects", label: t("Projekter og prompter"), icon: FoldersIcon },
   { id: "connections", label: t("API-forbindelser"), icon: KeyIcon },
   { id: "staff", label: "Admins", icon: ShieldCheckIcon },
+  { id: "usage", label: t("Forbrug og udgifter"), icon: ChartBarIcon },
   { id: "audit", label: t("Aktivitetslog"), icon: ScrollIcon },
 ];
 const statusText = (s: string) =>
@@ -187,7 +199,12 @@ export function App() {
   const [session, setSession] = useState<Session | null>(null),
     [loading, setLoading] = useState(true),
     [departing, setDeparting] = useState(false),
-    [tab, setTab] = useState("overview");
+    [tab, setTab] = useState(() =>
+      new URLSearchParams(location.search).get("view") === "usage"
+        ? "usage"
+        : "overview",
+    );
+  const [usageRefresh, setUsageRefresh] = useState(0);
   const [data, setData] = useState<Data>(empty),
     [notice, setNotice] = useState<
       string | { imported: number; skipped: number }
@@ -196,7 +213,7 @@ export function App() {
     [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<{
     type: string;
-    value?: Customer | Project | Connection | Prompt | Account;
+    value?: Customer | Project | Connection | Prompt | Account | ReportingSetup;
   } | null>(null);
   const backoffice = location.pathname.startsWith("/backoffice");
   const setup =
@@ -346,6 +363,7 @@ export function App() {
             : result?.messageKey || result?.message || message,
       );
       setModal(null);
+      if (path.startsWith("/usage/")) setUsageRefresh((v) => v + 1);
       if (
         result.projectId &&
         (path === "/connections" ||
@@ -443,6 +461,10 @@ export function App() {
   const selected = tabs().find((t) => t.id === tab)!;
   const navigate = (id: string) => {
     setTab(id);
+    const url = new URL(location.href);
+    if (id === "usage") url.searchParams.set("view", "usage");
+    else url.searchParams.delete("view");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
     setError("");
     setNotice("");
   };
@@ -510,47 +532,49 @@ export function App() {
           </div>
         </header>
         <main>
-          <div className="intro">
-            <span className="eyebrow">{t("ET ROLIGT OVERBLIK")}</span>
-            <h2>
-              {tab === "overview"
-                ? t("Plads til det, der er vigtigt.")
-                : tab === "customers"
-                  ? t("Menneskene bag samtalerne")
-                  : tab === "projects"
-                    ? t("Den rette assistent til hver kunde")
-                    : tab === "connections"
-                      ? t("Dine forbindelser til OpenAI")
-                      : tab === "staff"
-                        ? t("Administrér dit team")
-                        : t("Et spor af vigtige ændringer")}
-            </h2>
-            <p>
-              {tab === "overview"
-                ? t(
-                    "Administrér dine kunder, projekter og forbindelser ét sted.",
-                  )
-                : tab === "customers"
+          {tab !== "usage" && (
+            <div className="intro">
+              <span className="eyebrow">{t("ET ROLIGT OVERBLIK")}</span>
+              <h2>
+                {tab === "overview"
+                  ? t("Plads til det, der er vigtigt.")
+                  : tab === "customers"
+                    ? t("Menneskene bag samtalerne")
+                    : tab === "projects"
+                      ? t("Den rette assistent til hver kunde")
+                      : tab === "connections"
+                        ? t("Dine forbindelser til OpenAI")
+                        : tab === "staff"
+                          ? t("Administrér dit team")
+                          : t("Et spor af vigtige ændringer")}
+              </h2>
+              <p>
+                {tab === "overview"
                   ? t(
-                      "Styr adgang, projekttildelinger og svarrammer. Private kundesamtaler vises ikke her.",
+                      "Administrér dine kunder, projekter og forbindelser ét sted.",
                     )
-                  : tab === "projects"
+                  : tab === "customers"
                     ? t(
-                        "Tilknyt dine OpenAI-prompter, og vælg den rette assistent til hver kunde.",
+                        "Styr adgang, projekttildelinger og svarrammer. Private kundesamtaler vises ikke her.",
                       )
-                    : tab === "connections"
+                    : tab === "projects"
                       ? t(
-                          "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilknytte din OpenAI-prompt.",
+                          "Tilknyt dine OpenAI-prompter, og vælg den rette assistent til hver kunde.",
                         )
-                      : tab === "staff"
+                      : tab === "connections"
                         ? t(
-                            "Invitér administratorer og administrér deres adgang.",
+                            "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilknytte din OpenAI-prompt.",
                           )
-                        : t(
-                            "Her ser du login og administrative handlinger. Nøgler, adgangskoder og beskedindhold indgår ikke.",
-                          )}
-            </p>
-          </div>
+                        : tab === "staff"
+                          ? t(
+                              "Invitér administratorer og administrér deres adgang.",
+                            )
+                          : t(
+                              "Her ser du login og administrative handlinger. Nøgler, adgangskoder og beskedindhold indgår ikke.",
+                            )}
+              </p>
+            </div>
+          )}
           {error && !modal && (
             <p role="alert" className="alert">
               {t(error)}
@@ -1009,6 +1033,29 @@ export function App() {
               </Table>
             </>
           )}
+          {tab === "usage" && (
+            <UsagePage
+              key={session.id}
+              refreshKey={usageRefresh}
+              connect={(connection, revision) =>
+                setModal({
+                  type: "usage-connection",
+                  value: { id: "usage-reporting", connection, revision },
+                })
+              }
+              disconnect={(connection) =>
+                setModal({
+                  type: "usage-disconnect",
+                  value: {
+                    id: "usage-reporting",
+                    connection,
+                    revision: connection.revision,
+                  },
+                })
+              }
+              manage={() => navigate("customers")}
+            />
+          )}
           {tab === "audit" && (
             <Table
               headings={[
@@ -1047,27 +1094,31 @@ export function App() {
               : modal
                 ? modal.type === "account"
                   ? t("Min konto")
-                  : modal.type === "staff-workspace"
-                    ? t("Tildel assistenter")
-                    : modal.type === "staff"
-                      ? t("Administrér Admin")
-                      : modal.type === "customer"
-                        ? modal.value
-                          ? t("Administrér kunde")
-                          : t("Tilføj kunde")
-                        : modal.type === "project"
-                          ? modal.value
-                            ? t("Redigér projekt")
-                            : t("Tilføj projekt")
-                          : modal.type === "connection"
-                            ? t("Tilføj API-forbindelse")
-                            : modal.type === "rotate"
-                              ? t("Udskift API-nøgle")
-                              : modal.type === "prompt-link"
-                                ? t("Tilknyt OpenAI-prompt")
-                                : modal.type === "password"
-                                  ? t("Skift adgangskode")
-                                  : t("Prompt og instruktioner")
+                  : modal.type === "usage-connection"
+                    ? t("Tilslut OpenAI-rapportering")
+                    : modal.type === "usage-disconnect"
+                      ? t("Afbryd rapportering")
+                      : modal.type === "staff-workspace"
+                        ? t("Tildel assistenter")
+                        : modal.type === "staff"
+                          ? t("Administrér Admin")
+                          : modal.type === "customer"
+                            ? modal.value
+                              ? t("Administrér kunde")
+                              : t("Tilføj kunde")
+                            : modal.type === "project"
+                              ? modal.value
+                                ? t("Redigér projekt")
+                                : t("Tilføj projekt")
+                              : modal.type === "connection"
+                                ? t("Tilføj API-forbindelse")
+                                : modal.type === "rotate"
+                                  ? t("Udskift API-nøgle")
+                                  : modal.type === "prompt-link"
+                                    ? t("Tilknyt OpenAI-prompt")
+                                    : modal.type === "password"
+                                      ? t("Skift adgangskode")
+                                      : t("Prompt og instruktioner")
                 : ""
           }
           onClose={() => {
@@ -1106,6 +1157,41 @@ export function App() {
                   }
                   logout={clearSession}
                 />
+              )}
+              {modal.type === "usage-connection" && (
+                <ReportingConnectionForm
+                  connection={(modal.value as ReportingSetup).connection}
+                  revision={(modal.value as ReportingSetup).revision}
+                  busy={busy}
+                  save={(value) =>
+                    mutate(
+                      "/usage/connection",
+                      value,
+                      "POST",
+                      t("OpenAI-rapportering er tilsluttet."),
+                    )
+                  }
+                />
+              )}
+              {modal.type === "usage-disconnect" && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void mutate(
+                      "/usage/connection",
+                      { revision: (modal.value as ReportingSetup).revision },
+                      "DELETE",
+                      t("OpenAI-rapportering er afbrudt."),
+                    );
+                  }}
+                >
+                  <p>
+                    {t(
+                      "Rapporteringsnøglen fjernes fra appen. OpenAI-kontoen og projektforbindelserne ændres ikke.",
+                    )}
+                  </p>
+                  <Save busy={busy} label={t("Afbryd rapportering")} />
+                </form>
               )}
               {modal.type === "staff-workspace" && (
                 <StaffWorkspaceForm
@@ -1983,6 +2069,8 @@ function auditText(action: string) {
       "staff.updated": t("Admin opdateret"),
       "staff.workspace_updated": t("Assistenter tildelt"),
       "account.profile_updated": t("Profil opdateret"),
+      "usage.reporting_saved": t("Rapportering tilsluttet"),
+      "usage.reporting_removed": t("Rapportering afbrudt"),
       "staff.disabled": t("Admin deaktiveret"),
       "invitation.created": t("Invitation oprettet"),
       "invitation.queued": t("Invitation afleveret til mailserver"),

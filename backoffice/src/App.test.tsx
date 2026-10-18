@@ -245,6 +245,101 @@ test("the Admin account badge opens personal settings and the private workspace 
     screen.getByRole("link", { name: "Open my workspace" }),
   ).toHaveAttribute("href", "/");
 });
+test.each(["en", "da"] as const)(
+  "the usage page deep link connects reporting through the existing contextual MFA flow (%s)",
+  async (language) => {
+    setLanguage(language);
+    history.replaceState(null, "", "/backoffice/?view=usage");
+    let verified = false,
+      connected = false;
+    const writes: unknown[] = [];
+    mocked.mockImplementation(async (path, method = "GET", body) => {
+      if (path === "/auth/session") return session;
+      if (path === "/usage")
+        return {
+          asOf: new Date().toISOString(),
+          connection: connected
+            ? {
+                label: "Reports",
+                suffix: "test",
+                revision: 1,
+                updatedAt: new Date().toISOString(),
+              }
+            : null,
+          connectionRevision: connected ? 1 : 0,
+          accounts: [],
+          totalAllowance: 0,
+          appTrackingEnabled: false,
+        };
+      if (path.startsWith("/usage/openai"))
+        return {
+          month: new Date().toISOString().slice(0, 7),
+          connectionRevision: 1,
+          fetchedAt: new Date().toISOString(),
+          currency: "usd",
+          totals: {
+            costUsd: "0",
+            inputTokens: 0,
+            outputTokens: 0,
+            requests: 0,
+          },
+          projects: [],
+          days: [],
+        };
+      if (path === "/auth/reauth") {
+        verified = true;
+        return { ok: true };
+      }
+      if (path === "/usage/connection" && method === "POST") {
+        writes.push(body);
+        if (!verified) throw new ApiError(403, "Fresh code", "reauth_required");
+        connected = true;
+        return { ok: true };
+      }
+      return [];
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(
+      await screen.findByRole("button", { name: t("Tilslut rapportering") }),
+    );
+    await user.type(
+      screen.getByLabelText(t("Navn på rapporteringsforbindelsen")),
+      "Reports",
+    );
+    await user.type(
+      screen.getByLabelText(t("OpenAI Admin API-nøgle")),
+      "sk-proj-synthetic-wrong-purpose-test-key",
+    );
+    await user.click(
+      screen.getByRole("button", { name: t("Kontrollér og gem") }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      t(
+        "Brug en OpenAI Admin API-nøgle til rapportering, ikke en projektnøgle.",
+      ),
+    );
+    expect(writes).toHaveLength(0);
+    await user.clear(screen.getByLabelText(t("OpenAI Admin API-nøgle")));
+    await user.type(
+      screen.getByLabelText(t("OpenAI Admin API-nøgle")),
+      "sk-admin-synthetic-browser-test-key",
+    );
+    await user.click(
+      screen.getByRole("button", { name: t("Kontrollér og gem") }),
+    );
+    await confirmCode(user, "123456");
+    await screen.findByRole("button", { name: t("Afbryd rapportering") });
+    expect(writes).toHaveLength(2);
+    expect(writes[0]).toEqual(writes[1]);
+    expect(writes[0]).toEqual({
+      label: "Reports",
+      apiKey: "sk-admin-synthetic-browser-test-key",
+      revision: 0,
+    });
+    expect(screen.queryByLabelText(t("OpenAI Admin API-nøgle"))).toBeNull();
+  },
+);
 
 test("an Admin at the root uses their own frontend without loading backoffice customer lists", async () => {
   history.replaceState(null, "", "/");

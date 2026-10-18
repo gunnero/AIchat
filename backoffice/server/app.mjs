@@ -22,6 +22,7 @@ import { installAccounts, username } from "./accounts.mjs";
 import { translate } from "./messages.mjs";
 import { installCustomer } from "./customer.mjs";
 import { installAccountArea } from "./account-area.mjs";
+import { installUsage } from "./usage.mjs";
 import { checkOpenAI } from "./provider.mjs";
 import { promptImport, MAX_IMPORT_BYTES } from "./prompt-bundle.mjs";
 const P = "/backoffice/api",
@@ -95,6 +96,7 @@ export async function buildServer({
   staticRoot,
   clock = Date.now,
   providerCheck = checkOpenAI,
+  reportReader,
   bootstrapHash,
   passwordCheck = verifyPassword,
   mailer = async () => false,
@@ -662,6 +664,16 @@ export async function buildServer({
     mailer,
   });
   installAccountArea(app, { fail, fresh, stillAuthorized, stamp, audit });
+  installUsage(app, {
+    fail,
+    fresh,
+    stillAuthorized,
+    clock,
+    stamp,
+    audit,
+    vaultKey,
+    reportReader,
+  });
   app.get(P + "/overview", async () => ({
     customers: (
       await db
