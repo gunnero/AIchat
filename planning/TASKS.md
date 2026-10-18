@@ -151,3 +151,5 @@ Added after the client meeting on 18 October 2026. AK-059 is the synthetic proto
 | [AK-065 — Persist backoffice customers, projects and immutable prompt versions](https://github.com/gunnero/AIchat/issues/67) | P0 | AK-063 |
 | [AK-066 — Deploy and verify the isolated administrator service on jig](https://github.com/gunnero/AIchat/issues/68) | P0 | AK-063, AK-064, AK-065 |
 | [AK-067 — Complete staff invitations, roles and verified recovery before customer pilot](https://github.com/gunnero/AIchat/issues/69) | P0 | AK-063, AK-066 |
+
+| [AK-068 — Add protected Admin/Customer identities and bilingual invitation onboarding](https://github.com/gunnero/AIchat/issues/71) | P0 | AK-063, AK-065, AK-066 |

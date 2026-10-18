@@ -1,6 +1,7 @@
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { buildServer } from "./app.mjs";
+import { localMailer } from "./mail.mjs";
 import { digest } from "./security.mjs";
 process.umask(0o077);
 const state = resolve(process.env.STATE_DIR || ".state");
@@ -27,6 +28,9 @@ const app = await buildServer({
   dbPath: state + "/backoffice.sqlite",
   vaultKey: key,
   bootstrapHash,
+  mailer: process.env.MAIL_FROM
+    ? localMailer(process.env.MAIL_FROM)
+    : async () => false,
   origin: publicOrigin,
   localOrigin: process.env.LOCAL_SETUP_ORIGIN || `http://127.0.0.1:${port}`,
   secureCookies: publicOrigin.startsWith("https:"),

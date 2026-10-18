@@ -11,6 +11,7 @@ WorkingDirectory=/opt/ai-kundetypeassistent/current
 Environment=NODE_ENV=production
 Environment=PUBLIC_ORIGIN=https://ai.igurl.dk
 Environment=PORT=8765
+Environment=MAIL_FROM=no-reply@ai.igurl.dk
 Environment=STATE_DIR=/var/lib/ai-kundetypeassistent
 EnvironmentFile=/etc/ai-kundetypeassistent-release.env
 ExecStart=/opt/ai-kundetypeassistent/runtime/bin/node /opt/ai-kundetypeassistent/current/server/start.mjs

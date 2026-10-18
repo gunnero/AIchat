@@ -11,12 +11,15 @@ if (!process.argv[2] || destination === state)
 await mkdir(destination, { mode: 0o700 });
 const db = new DatabaseSync(join(state, "backoffice.sqlite"));
 db.prepare("VACUUM INTO ?").run(join(destination, "backoffice.sqlite"));
+const schema = db
+  .prepare("SELECT max(version) AS version FROM schema_version")
+  .get().version;
 db.close();
 await copyFile(
   resolve(process.env.VAULT_KEY_FILE || join(state, "vault.key")),
   join(destination, "vault.key"),
 );
-const manifest = { createdAt: new Date().toISOString(), schema: 1, files: {} };
+const manifest = { createdAt: new Date().toISOString(), schema, files: {} };
 for (const name of ["backoffice.sqlite", "vault.key"]) {
   await chmod(join(destination, name), 0o600);
   manifest.files[name] = createHash("sha256")

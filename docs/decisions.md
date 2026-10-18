@@ -25,3 +25,6 @@ The baseline is [PROJECT.md](../planning/PROJECT.md). Unresolved inputs are not 
 | Release | Limited invited pilot before broad availability. | Legal, security, privacy, cost, quality and recovery evidence, AK-053–056. |
 
 Names, prices, allowances and dates are demo fixtures only. State resets on reload. Customer uploads, payment webhooks, teams, public sharing and autonomous external actions are outside this batch.
+
+
+18 October account update: the user requested username/email login, mandatory TOTP for all accounts, a protected first administrator internally (displayed as Admin), ordinary Admin and Customer roles, recipient-selected passwords through emailed invitation links, and English/Danish backoffice screens. Use `no-reply@ai.igurl.dk` with the existing local MTA, subject to sender-authentication DNS verification. This replaces the initial email-link-only sign-in direction for this identity foundation; invitation links enroll an account, while subsequent sign-in requires password plus TOTP. Customer chat storage and managed-identity/PostgreSQL migration remain separate decisions.

@@ -2,7 +2,7 @@
 
 A Danish customer-type assistant for Helle Bodeholt, using the approved option 1 layout with the client's black-and-white palette requested on 18 October 2026.
 
-The first **persistent administrator backoffice** is in `backoffice/`: password/authenticator sign-in, customer/project records, immutable prompt versions and encrypted API connections. See [backoffice setup, boundaries and recovery](docs/backoffice.md). The original customer experience in `app/` remains an explicitly labelled synthetic demo; customer identity, AI chat and billing integration are later milestones.
+The first **persistent administrator backoffice** is in `backoffice/`: English/Danish management, a protected first Admin, invitation-only Admin/Customer accounts with required password/authenticator sign-in, customer/project records, immutable prompt versions and encrypted API connections. See [backoffice setup, boundaries and recovery](docs/backoffice.md). The original customer experience in `app/` remains an explicitly labelled synthetic demo; live AI chat, private history and billing integration are later milestones.
 
 [Open the live demo](https://ai.igurl.dk/) · [Deployment and rollback](docs/deployment-jig.md). Use fictional information only; the demo resets on reload.
 

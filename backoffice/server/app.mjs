@@ -18,6 +18,8 @@ import {
   otp,
   otpStep,
 } from "./security.mjs";
+import { installAccounts, username } from "./accounts.mjs";
+import { translate } from "./messages.mjs";
 import { checkOpenAI } from "./provider.mjs";
 
 const P = "/backoffice/api",
@@ -40,6 +42,7 @@ const customerInput = z
   .object({
     name: text(100),
     email,
+    locale: z.enum(["en", "da"]).default("da"),
     status: z.enum(["pending", "active", "paused"]),
     expires: z.iso.date().nullable(),
     allowance: z.int().min(0).max(1000000),
@@ -85,6 +88,7 @@ export async function buildServer({
   providerCheck = checkOpenAI,
   bootstrapHash,
   passwordCheck = verifyPassword,
+  mailer = async () => false,
 }) {
   if (!Buffer.isBuffer(vaultKey) || vaultKey.length !== 32)
     throw new Error("A 32-byte vault key is required");
@@ -146,17 +150,34 @@ export async function buildServer({
     return (
       db
         .prepare(
-          "UPDATE admins SET last_step=? WHERE id=? AND last_step<? AND password_hash=?",
+          "UPDATE admins SET last_step=? WHERE id=? AND last_step<? AND password_hash=? AND status='active'",
         )
         .run(step, admin.id, step, admin.password_hash).changes === 1
     );
   };
+  const activeAccount = (id) =>
+    db
+      .prepare(
+        `SELECT admins.* FROM admins LEFT JOIN customers ON customers.id=admins.customer_id
+    WHERE admins.id=? AND admins.status='active' AND (admins.role='admin' OR (customers.status='active' AND (customers.expires IS NULL OR customers.expires>=?)))`,
+      )
+      .get(id, new Date(clock()).toISOString().slice(0, 10));
+  const sessionDto = (a, sid) => ({
+    id: a.id,
+    name: a.name,
+    email: a.email,
+    username: a.username,
+    locale: a.locale,
+    role: a.role === "admin" ? "Admin" : "Customer",
+    csrf: csrfFor(vaultKey, sid),
+  });
   const stillAuthorized = (r) => {
     const live = db
       .prepare("SELECT * FROM sessions WHERE hash=?")
       .get(r.session.hash);
     if (
       !live ||
+      !activeAccount(live.admin_id) ||
       live.expires <= clock() ||
       live.seen + 30 * 60 * 1000 <= clock()
     )
@@ -189,17 +210,25 @@ export async function buildServer({
         !r.headers["content-type"]?.startsWith("application/json"))
     )
       fail(403, "Anmodningen blev afvist. Genindlæs siden.");
-    if (path === P + "/auth/login") return;
+    if (
+      [
+        P + "/auth/login",
+        P + "/register/begin",
+        P + "/register/complete",
+      ].includes(path)
+    )
+      return;
     const sid = r.cookies[SID];
     const session =
       sid &&
       db
         .prepare(
-          "SELECT sessions.*,admins.name,admins.email FROM sessions JOIN admins ON admins.id=sessions.admin_id WHERE hash=?",
+          "SELECT sessions.*,admins.name,admins.email,admins.username,admins.role,admins.locale,admins.customer_id FROM sessions JOIN admins ON admins.id=sessions.admin_id WHERE hash=?",
         )
         .get(digest(sid));
     if (
       !session ||
+      !activeAccount(session.admin_id) ||
       session.expires <= clock() ||
       session.seen + 30 * 60 * 1000 <= clock()
     ) {
@@ -207,6 +236,20 @@ export async function buildServer({
       reply.clearCookie(SID, cookieOptions);
       fail(401, "Log ind for at fortsætte.");
     }
+    const common = [
+      "/auth/session",
+      "/auth/logout",
+      "/auth/password",
+      "/auth/reauth",
+    ];
+    if (
+      session.role !== "admin" &&
+      !common.some((p) => path === P + p) &&
+      path !== P + "/customer/home"
+    )
+      fail(403, "Adgang nægtet.");
+    if (session.role === "admin" && path === P + "/customer/home")
+      fail(403, "Adgang nægtet.");
     r.session = session;
     r.adminId = session.admin_id;
     r.sessionId = sid;
@@ -219,6 +262,24 @@ export async function buildServer({
       clock(),
       session.hash,
     );
+  });
+  app.addHook("onSend", async (r, reply, payload) => {
+    if (
+      r.url.startsWith(P + "/") &&
+      reply.getHeader("content-type")?.includes("application/json") &&
+      typeof payload === "string"
+    ) {
+      const body = JSON.parse(payload);
+      if (typeof body.message === "string") {
+        body.messageKey = body.message;
+        body.message = translate(
+          body.message,
+          r.headers["accept-language"]?.startsWith("en") ? "en" : "da",
+        );
+        return JSON.stringify(body);
+      }
+    }
+    return payload;
   });
   app.setErrorHandler((error, r, reply) => {
     if (error instanceof Problem)
@@ -269,6 +330,12 @@ export async function buildServer({
       secret,
       uri: otp(secret).toString(),
       csrf: csrfFor(vaultKey, sid),
+      identity:
+        db
+          .prepare(
+            "SELECT name,email,username FROM owner_identity WHERE singleton=1",
+          )
+          .get() || null,
     };
   });
   app.post(P + "/setup", async (r, reply) => {
@@ -290,9 +357,28 @@ export async function buildServer({
     )
       fail(403, "Opsætningen er udløbet. Genindlæs siden.");
     const input = z
-      .object({ name: text(100), email, password, code })
+      .object({
+        name: text(100),
+        email,
+        username: username.optional(),
+        password,
+        code,
+      })
       .strict()
       .parse(r.body);
+    const enforceReservation = () => {
+      const identity = db
+        .prepare("SELECT * FROM owner_identity WHERE singleton=1")
+        .get();
+      if (
+        identity &&
+        (input.email !== identity.email ||
+          input.username !== identity.username ||
+          input.name !== identity.name)
+      )
+        fail(403, "Brug den reserverede konto i den private opsætning.");
+    };
+    enforceReservation();
     const secret = unseal(vaultKey, session.secret, "setup:" + session.hash);
     const step = otpStep(secret, input.code, clock());
     if (step === null)
@@ -304,7 +390,15 @@ export async function buildServer({
       hash = await hashPassword(input.password);
     transaction(db, () => {
       if (ownerExists()) fail(409, "Administrationen er allerede oprettet.");
-      db.prepare("INSERT INTO admins VALUES(?,?,?,?,?,?,?)").run(
+      const liveSetup = db
+        .prepare("SELECT expires FROM setup_sessions WHERE hash=?")
+        .get(session.hash);
+      if (!liveSetup || liveSetup.expires <= clock())
+        fail(403, "Opsætningen er udløbet. Genindlæs siden.");
+      enforceReservation();
+      db.prepare(
+        "INSERT INTO admins(id,email,name,password_hash,mfa_secret,last_step,created_at,username,protected) VALUES(?,?,?,?,?,?,?,?,1)",
+      ).run(
         id,
         input.email,
         input.name,
@@ -312,6 +406,7 @@ export async function buildServer({
         seal(vaultKey, secret, "mfa:" + id),
         step,
         stamp(),
+        input.username || null,
       );
       db.prepare("DELETE FROM setup_sessions").run();
       audit(id, "admin.enrolled", id);
@@ -328,23 +423,32 @@ export async function buildServer({
     { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
     async (r, reply) => {
       const input = z
-        .object({ email, password: z.string().min(1).max(256), code })
+        .object({
+          email: text(254).transform((v) => v.toLowerCase()),
+          password: z.string().min(1).max(256),
+          code,
+        })
         .strict()
         .parse(r.body);
-      const bucket = digest(input.email),
+      const admin = db
+        .prepare("SELECT * FROM admins WHERE email=? OR username=?")
+        .get(input.email, input.email);
+      const bucket = digest(admin?.id || input.email),
         attempt = db
           .prepare("SELECT * FROM login_failures WHERE bucket=?")
           .get(bucket);
       if (attempt && attempt.reset_at > clock() && attempt.failures >= 5)
         fail(429, "For mange loginforsøg. Prøv igen om ti minutter.");
-      const admin = db
-        .prepare("SELECT * FROM admins WHERE email=?")
-        .get(input.email);
       const valid = await passwordCheck(
         input.password,
         admin?.password_hash || dummyPassword,
       );
-      if (!valid || !admin || !consumeOtp(admin, input.code)) {
+      if (
+        !valid ||
+        !admin ||
+        !activeAccount(admin.id) ||
+        !consumeOtp(admin, input.code)
+      ) {
         db.prepare(
           "INSERT INTO login_failures VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET failures=CASE WHEN reset_at<=? THEN 1 ELSE failures+1 END,reset_at=CASE WHEN reset_at<=? THEN excluded.reset_at ELSE reset_at END",
         ).run(bucket, clock() + 10 * 60 * 1000, clock(), clock());
@@ -375,18 +479,10 @@ export async function buildServer({
         audit(admin.id, "admin.login", admin.id);
       });
       reply.setCookie(SID, sid, cookieOptions);
-      return {
-        name: admin.name,
-        email: admin.email,
-        csrf: csrfFor(vaultKey, sid),
-      };
+      return sessionDto(admin, sid);
     },
   );
-  app.get(P + "/auth/session", async (r) => ({
-    name: r.session.name,
-    email: r.session.email,
-    csrf: csrfFor(vaultKey, r.sessionId),
-  }));
+  app.get(P + "/auth/session", async (r) => sessionDto(r.session, r.sessionId));
   app.post(P + "/auth/logout", async (r, reply) => {
     db.prepare("DELETE FROM sessions WHERE hash=?").run(r.session.hash);
     audit(r.adminId, "admin.logout", r.adminId);
@@ -445,6 +541,18 @@ export async function buildServer({
       return { ok: true };
     },
   );
+  const accounts = installAccounts(app, {
+    vaultKey,
+    origin,
+    clock,
+    stamp,
+    audit,
+    fail,
+    fresh,
+    stillAuthorized,
+    cookieOptions,
+    mailer,
+  });
   app.get(P + "/overview", async () => ({
     customers: db.prepare("SELECT count(*) AS n FROM customers").get().n,
     projects: db.prepare("SELECT count(*) AS n FROM projects").get().n,
@@ -456,6 +564,14 @@ export async function buildServer({
       .all()
       .map((c) => ({
         ...c,
+        account: (() => {
+          const a = db
+            .prepare(
+              "SELECT id,status,username,locale FROM admins WHERE customer_id=?",
+            )
+            .get(c.id);
+          return a ? { ...a, invitation: accounts.inviteMeta(a.id) } : null;
+        })(),
         assignments: db
           .prepare(
             "SELECT project_id AS projectId,version_id AS versionId FROM assignments WHERE customer_id=?",
@@ -463,15 +579,23 @@ export async function buildServer({
           .all(c.id),
       })),
   );
-  function saveCustomer(r, id, create) {
+  async function saveCustomer(r, id, create) {
     const v = customerInput.parse(r.body);
     if (
       new Set(v.assignments.map((a) => a.projectId)).size !==
       v.assignments.length
     )
       fail(400, "Vælg kun én promptversion pr. projekt.");
+    const accountId = create
+      ? randomUUID()
+      : db.prepare("SELECT id FROM admins WHERE customer_id=?").get(id)?.id;
     transaction(db, () => {
-      if (create)
+      const currentAccount =
+        accountId &&
+        db.prepare("SELECT * FROM admins WHERE id=?").get(accountId);
+      if (currentAccount && currentAccount.email !== v.email)
+        fail(400, "E-mail kan ikke ændres efter invitationen.");
+      if (create) {
         db.prepare("INSERT INTO customers VALUES(?,?,?,?,?,?,?,?)").run(
           id,
           v.name,
@@ -482,7 +606,10 @@ export async function buildServer({
           stamp(),
           stamp(),
         );
-      else {
+        db.prepare(
+          "INSERT INTO admins(id,email,name,password_hash,mfa_secret,last_step,created_at,role,status,locale,customer_id) VALUES(?,?,?,'','',-1,?,'customer','pending',?,?)",
+        ).run(accountId, v.email, v.name, stamp(), v.locale, id);
+      } else {
         if (
           !db
             .prepare(
@@ -493,6 +620,15 @@ export async function buildServer({
         )
           fail(404, "Kunden findes ikke.");
         db.prepare("DELETE FROM assignments WHERE customer_id=?").run(id);
+        if (accountId) {
+          db.prepare("UPDATE admins SET name=?,locale=? WHERE id=?").run(
+            v.name,
+            v.locale,
+            accountId,
+          );
+          if (v.status !== "active")
+            db.prepare("DELETE FROM sessions WHERE admin_id=?").run(accountId);
+        }
       }
       for (const a of v.assignments)
         db.prepare("INSERT INTO assignments VALUES(?,?,?)").run(
@@ -502,7 +638,9 @@ export async function buildServer({
         );
       audit(r.adminId, create ? "customer.created" : "customer.updated", id);
     });
-    return { id };
+    const result = create ? await accounts.invite(accountId, r.adminId) : {};
+    if (create) stillAuthorized(r);
+    return { id, ...result };
   }
   app.post(P + "/customers", async (r) => saveCustomer(r, randomUUID(), true));
   app.put(P + "/customers/:id", async (r) =>

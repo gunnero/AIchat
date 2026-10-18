@@ -19,7 +19,31 @@ export function openDatabase(path) {
   const version = db
     .prepare("SELECT max(version) AS version FROM schema_version")
     .get().version;
-  if (version !== 1) {
+  if (version === 1) {
+    transaction(db, () => {
+      db.exec(`
+        ALTER TABLE admins ADD COLUMN username TEXT COLLATE NOCASE;
+        ALTER TABLE admins ADD COLUMN role TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin','customer'));
+        ALTER TABLE admins ADD COLUMN protected INTEGER NOT NULL DEFAULT 0 CHECK(protected IN (0,1));
+        ALTER TABLE admins ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('pending','active','paused'));
+        ALTER TABLE admins ADD COLUMN locale TEXT NOT NULL DEFAULT 'da' CHECK(locale IN ('en','da'));
+        ALTER TABLE admins ADD COLUMN customer_id TEXT REFERENCES customers(id);
+        CREATE UNIQUE INDEX account_username ON admins(username) WHERE username IS NOT NULL;
+        CREATE UNIQUE INDEX account_customer ON admins(customer_id) WHERE customer_id IS NOT NULL;
+        UPDATE admins SET protected=1 WHERE id=(SELECT id FROM admins ORDER BY created_at,id LIMIT 1);
+        CREATE UNIQUE INDEX single_protected_account ON admins(protected) WHERE protected=1;
+        CREATE TABLE owner_identity(singleton INTEGER PRIMARY KEY CHECK(singleton=1),name TEXT NOT NULL,email TEXT NOT NULL,username TEXT NOT NULL);
+        CREATE TABLE invitations(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES admins(id),token_hash TEXT NOT NULL UNIQUE,expires INTEGER NOT NULL,status TEXT NOT NULL CHECK(status IN ('sending','sent','failed','revoked','used')),created_at TEXT NOT NULL);
+        CREATE INDEX invitation_account ON invitations(account_id);
+        CREATE TABLE registrations(hash TEXT PRIMARY KEY,invitation_id TEXT NOT NULL REFERENCES invitations(id),secret TEXT NOT NULL,expires INTEGER NOT NULL);
+        CREATE TRIGGER protect_owner_delete BEFORE DELETE ON admins WHEN OLD.protected=1 BEGIN SELECT RAISE(ABORT,'Account cannot be changed'); END;
+        CREATE TRIGGER protect_owner_identity BEFORE UPDATE OF email,name,username,role,protected,status,customer_id ON admins
+          WHEN OLD.protected=1 AND (NEW.email IS NOT OLD.email OR NEW.name IS NOT OLD.name OR NEW.username IS NOT OLD.username OR NEW.role IS NOT OLD.role OR NEW.protected IS NOT OLD.protected OR NEW.status IS NOT OLD.status OR NEW.customer_id IS NOT OLD.customer_id)
+          BEGIN SELECT RAISE(ABORT,'Account cannot be changed'); END;
+        INSERT INTO schema_version VALUES(2);
+      `);
+    });
+  } else if (version !== 2) {
     db.close();
     throw new Error("Unsupported database schema");
   }

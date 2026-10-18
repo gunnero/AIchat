@@ -1,3 +1,4 @@
+import { t, getLanguage, useLanguage, LanguagePicker } from "./i18n";
 import {
   useEffect,
   useRef,
@@ -25,7 +26,26 @@ import "@fontsource/source-sans-3/600.css";
 import "@fontsource/source-sans-3/700.css";
 import "./style.css";
 
-type Session = { name: string; email: string; csrf: string };
+type Session = {
+  id: string;
+  name: string;
+  email: string;
+  username: string | null;
+  role: "Admin" | "Customer";
+  locale: "en" | "da";
+  csrf: string;
+};
+type Invitation = { id: string; status: string; expires: number } | null;
+type Account = {
+  id: string;
+  name: string;
+  email: string;
+  username: string | null;
+  role: "Admin" | "Customer";
+  status: string;
+  locale: "en" | "da";
+  invitation: Invitation;
+};
 type Customer = {
   id: string;
   name: string;
@@ -33,6 +53,13 @@ type Customer = {
   status: string;
   expires: string | null;
   allowance: number;
+  account: {
+    id: string;
+    status: string;
+    username: string | null;
+    locale: "en" | "da";
+    invitation: Invitation;
+  } | null;
   assignments: { projectId: string; versionId: string }[];
 };
 type Connection = {
@@ -75,6 +102,7 @@ type Data = {
   projects: Project[];
   prompts: Prompt[];
   audit: Audit[];
+  staff: Account[];
 };
 const empty: Data = {
   customers: [],
@@ -82,29 +110,36 @@ const empty: Data = {
   projects: [],
   prompts: [],
   audit: [],
+  staff: [],
 };
-const tabs = [
-  { id: "overview", label: "Overblik", icon: SquaresFourIcon },
-  { id: "customers", label: "Kunder", icon: UsersIcon },
-  { id: "projects", label: "Projekter og prompter", icon: FoldersIcon },
-  { id: "connections", label: "API-forbindelser", icon: KeyIcon },
-  { id: "audit", label: "Aktivitetslog", icon: ScrollIcon },
+const tabs = () => [
+  { id: "overview", label: t("Overblik"), icon: SquaresFourIcon },
+  { id: "customers", label: t("Kunder"), icon: UsersIcon },
+  { id: "projects", label: t("Projekter og prompter"), icon: FoldersIcon },
+  { id: "connections", label: t("API-forbindelser"), icon: KeyIcon },
+  { id: "staff", label: "Admins", icon: ShieldCheckIcon },
+  { id: "audit", label: t("Aktivitetslog"), icon: ScrollIcon },
 ];
 const statusText = (s: string) =>
   ({
-    ok: "Kontrolleret",
-    invalid: "Nøgle afvist",
-    restricted: "Adgang mangler",
-    rate_limited: "Midlertidigt begrænset",
-    error: "Kontrol mislykkedes",
-    unchecked: "Ikke kontrolleret",
-    pending: "Afventer",
-    active: "Aktiv",
-    paused: "På pause",
+    ok: t("Kontrolleret"),
+    invalid: t("Nøgle afvist"),
+    restricted: t("Adgang mangler"),
+    rate_limited: t("Midlertidigt begrænset"),
+    error: t("Kontrol mislykkedes"),
+    unchecked: t("Ikke kontrolleret"),
+    pending: t("Afventer"),
+    active: t("Aktiv"),
+    paused: t("På pause"),
+    sending: t("Sender"),
+    sent: t("Afleveret til mailserver"),
+    failed: t("E-mail mislykkedes"),
+    revoked: t("Tilbagekaldt"),
+    used: t("Aktiveret"),
   })[s] || s;
 const date = (s: string | null) =>
   s
-    ? new Intl.DateTimeFormat("da-DK", {
+    ? new Intl.DateTimeFormat(getLanguage() === "en" ? "en-GB" : "da-DK", {
         dateStyle: "medium",
         ...(s.includes("T") ? { timeStyle: "short" } : {}),
       }).format(new Date(s))
@@ -127,6 +162,7 @@ async function api<T>(
     method,
     credentials: "same-origin",
     headers: {
+      "Accept-Language": getLanguage(),
       ...(method !== "GET" ? { "Content-Type": "application/json" } : {}),
       ...(csrf ? { "X-CSRF-Token": csrf } : {}),
     },
@@ -136,7 +172,9 @@ async function api<T>(
   if (!response.ok)
     throw new ApiError(
       response.status,
-      data.message || "Handlingen kunne ikke gennemføres.",
+      data.messageKey ||
+        data.message ||
+        t("Handlingen kunne ikke gennemføres."),
     );
   return data;
 }
@@ -152,6 +190,14 @@ function Brand() {
   );
 }
 function App() {
+  useLanguage();
+  const [inviteToken] = useState(() =>
+    new URLSearchParams(location.hash.slice(1)).get("invite"),
+  );
+  useEffect(() => {
+    if (inviteToken)
+      history.replaceState(null, "", location.pathname + location.search);
+  }, [inviteToken]);
   const [session, setSession] = useState<Session | null>(null),
     [loading, setLoading] = useState(true),
     [tab, setTab] = useState("overview");
@@ -161,31 +207,32 @@ function App() {
     [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<{
     type: string;
-    value?: Customer | Project | Connection | Prompt;
+    value?: Customer | Project | Connection | Prompt | Account;
   } | null>(null);
   const setup = new URLSearchParams(location.search).get("setup") === "1";
   useEffect(() => {
-    if (!setup)
+    if (!setup && !inviteToken)
       api<Session>("/auth/session")
         .then(setSession)
         .catch((e) => {
           if (e.status !== 401) setError(e.message);
         })
         .finally(() => setLoading(false));
-  }, [setup]);
+  }, [setup, inviteToken]);
   async function reload() {
-    const [customers, connections, projects, prompts, audit] =
+    const [customers, connections, projects, prompts, audit, staff] =
       await Promise.all([
         api<Customer[]>("/customers"),
         api<Connection[]>("/connections"),
         api<Project[]>("/projects"),
         api<Prompt[]>("/prompts"),
         api<Audit[]>("/audit"),
+        api<Account[]>("/staff"),
       ]);
-    setData({ customers, connections, projects, prompts, audit });
+    setData({ customers, connections, projects, prompts, audit, staff });
   }
   useEffect(() => {
-    if (session)
+    if (session?.role === "Admin")
       reload().catch((e) => {
         setError(e.message);
         if (e.status === 401) {
@@ -198,20 +245,29 @@ function App() {
     path: string,
     body: unknown,
     method = "POST",
-    message = "Ændringerne er gemt.",
+    message = t("Ændringerne er gemt."),
   ) {
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const result = await api<{ message?: string }>(
-        path,
-        method,
-        body,
-        session?.csrf,
-      );
+      const result = await api<{
+        message?: string;
+        messageKey?: string;
+        invitation?: string;
+      }>(path, method, body, session?.csrf);
       await reload();
-      setNotice(result?.message || message);
+      setNotice(
+        result.invitation === "failed"
+          ? t(
+              "Kontoen er gemt, men e-mailen kunne ikke sendes. Send invitationen igen.",
+            )
+          : result.invitation === "sent"
+            ? t(
+                "Invitationen er afleveret til mailserveren. Levering er endnu ikke bekræftet.",
+              )
+            : result?.messageKey || result?.message || message,
+      );
       setModal(null);
       return true;
     } catch (e) {
@@ -227,15 +283,26 @@ function App() {
       setBusy(false);
     }
   }
+  if (inviteToken) return <Registration token={inviteToken} />;
   if (setup) return <Setup />;
   if (loading)
     return (
       <div className="auth-page">
-        <p role="status">Åbner administrationen…</p>
+        <p role="status">{t("Åbner administrationen…")}</p>
       </div>
     );
-  if (!session) return <Login onLogin={setSession} error={error} />;
-  const selected = tabs.find((t) => t.id === tab)!;
+  if (!session) return <Login onLogin={setSession} error={t(error)} />;
+  if (session.role === "Customer")
+    return (
+      <CustomerHome
+        session={session}
+        logout={() => {
+          setSession(null);
+          setData(empty);
+        }}
+      />
+    );
+  const selected = tabs().find((t) => t.id === tab)!;
   const navigate = (id: string) => {
     setTab(id);
     setError("");
@@ -245,9 +312,10 @@ function App() {
     <div className="shell">
       <aside>
         <Brand />
-        <p className="nav-label">DIT ARBEJDSRUM</p>
+        <LanguagePicker />
+        <p className="nav-label">{t("DIT ARBEJDSRUM")}</p>
         <nav aria-label="Administration">
-          {tabs.map((t) => (
+          {tabs().map((t) => (
             <button
               key={t.id}
               className={tab === t.id ? "selected" : ""}
@@ -264,11 +332,11 @@ function App() {
             <span>{session.name.slice(0, 1).toUpperCase()}</span>
             <div>
               <strong>{session.name}</strong>
-              <small>Administrator · MFA</small>
+              <small>Admin · 2FA</small>
             </div>
           </div>
           <button onClick={() => setModal({ type: "password" })}>
-            Skift adgangskode
+            {t("Skift adgangskode")}{" "}
           </button>
           <button
             onClick={async () => {
@@ -286,7 +354,7 @@ function App() {
             disabled={busy}
           >
             <SignOutIcon size={20} />
-            Log ud
+            {t("Log ud")}{" "}
           </button>
         </div>
       </aside>
@@ -301,43 +369,59 @@ function App() {
             onClick={() => setModal({ type: "reauth" })}
           >
             <ShieldCheckIcon size={19} />
-            Bekræft adgang
+            {t("Bekræft adgang")}{" "}
           </button>
         </header>
         <main>
           <div className="intro">
-            <span className="eyebrow">ET ROLIGT OVERBLIK</span>
+            <span className="eyebrow">{t("ET ROLIGT OVERBLIK")}</span>
             <h2>
               {tab === "overview"
-                ? "Plads til det, der er vigtigt."
+                ? t("Plads til det, der er vigtigt.")
                 : tab === "customers"
-                  ? "Menneskene bag samtalerne"
+                  ? t("Menneskene bag samtalerne")
                   : tab === "projects"
-                    ? "Den rette assistent til hver kunde"
+                    ? t("Den rette assistent til hver kunde")
                     : tab === "connections"
-                      ? "Dine forbindelser til OpenAI"
-                      : "Et spor af vigtige ændringer"}
+                      ? t("Dine forbindelser til OpenAI")
+                      : tab === "staff"
+                        ? t("Administrér dit team")
+                        : t("Et spor af vigtige ændringer")}
             </h2>
             <p>
               {tab === "overview"
-                ? "Administrér dine kunder, projekter og forbindelser ét sted."
+                ? t(
+                    "Administrér dine kunder, projekter og forbindelser ét sted.",
+                  )
                 : tab === "customers"
-                  ? "Styr adgang, projekttildelinger og svarrammer. Private kundesamtaler vises ikke her."
+                  ? t(
+                      "Styr adgang, projekttildelinger og svarrammer. Private kundesamtaler vises ikke her.",
+                    )
                   : tab === "projects"
-                    ? "Opret projekter og gem gennemgåede promptversioner, som du kan tildele dine kunder."
+                    ? t(
+                        "Opret projekter og gem gennemgåede promptversioner, som du kan tildele dine kunder.",
+                      )
                     : tab === "connections"
-                      ? "Tilføj en projektnøgle, kontrollér forbindelsen, og vælg den i dit app-projekt."
-                      : "Her ser du login og administrative handlinger. Nøgler, adgangskoder og beskedindhold indgår ikke."}
+                      ? t(
+                          "Tilføj en projektnøgle, kontrollér forbindelsen, og vælg den i dit app-projekt.",
+                        )
+                      : tab === "staff"
+                        ? t(
+                            "Invitér administratorer og administrér deres adgang.",
+                          )
+                        : t(
+                            "Her ser du login og administrative handlinger. Nøgler, adgangskoder og beskedindhold indgår ikke.",
+                          )}
             </p>
           </div>
           {error && !modal && (
             <p role="alert" className="alert">
-              {error}
+              {t(error)}
             </p>
           )}
           {notice && (
             <p role="status" className="notice">
-              {notice}
+              {t(notice)}
             </p>
           )}
           {tab === "overview" && (
@@ -345,17 +429,17 @@ function App() {
               <div className="metrics">
                 {[
                   {
-                    title: "Kunder",
+                    title: t("Kunder"),
                     n: data.customers.length,
                     id: "customers",
                   },
                   {
-                    title: "Projekter",
+                    title: t("Projekter"),
                     n: data.projects.length,
                     id: "projects",
                   },
                   {
-                    title: "API-forbindelser",
+                    title: t("API-forbindelser"),
                     n: data.connections.length,
                     id: "connections",
                   },
@@ -377,25 +461,31 @@ function App() {
                 <div className="icon-circle">
                   <ShieldCheckIcon size={30} />
                 </div>
-                <h3>Kom godt i gang</h3>
+                <h3>{t("Kom godt i gang")}</h3>
                 <p>
-                  Forbind OpenAI, opret et projekt og tilføj din første kunde.
+                  {t(
+                    "Forbind OpenAI, opret et projekt og tilføj din første kunde.",
+                  )}{" "}
                 </p>
                 <div className="steps">
                   <button onClick={() => navigate("connections")}>
                     <b>01</b>
                     <span>
-                      Tilføj en API-forbindelse
-                      <small>Du ejer nøglerne og vælger selv projekt.</small>
+                      {t("Tilføj en API-forbindelse")}{" "}
+                      <small>
+                        {t("Du ejer nøglerne og vælger selv projekt.")}
+                      </small>
                     </span>
                     <ArrowRightIcon size={21} />
                   </button>
                   <button onClick={() => navigate("projects")}>
                     <b>02</b>
                     <span>
-                      Opret projekt og prompt
+                      {t("Opret projekt og prompt")}{" "}
                       <small>
-                        Gem en gennemgået version af instruktionerne.
+                        {t(
+                          "Gem en gennemgået version af instruktionerne.",
+                        )}{" "}
                       </small>
                     </span>
                     <ArrowRightIcon size={21} />
@@ -403,9 +493,11 @@ function App() {
                   <button onClick={() => navigate("customers")}>
                     <b>03</b>
                     <span>
-                      Opret og tildel kunder
+                      {t("Opret og tildel kunder")}{" "}
                       <small>
-                        Vælg adgang og den rette prompt til hver kunde.
+                        {t(
+                          "Vælg adgang og den rette prompt til hver kunde.",
+                        )}{" "}
                       </small>
                     </span>
                     <ArrowRightIcon size={21} />
@@ -413,31 +505,33 @@ function App() {
                 </div>
               </section>
               <p className="footnote">
-                Denne første backoffice-version gemmer rigtige
-                administrationsdata. Kundelogin, live AI-chat, betaling og
-                automatisk e-mail er næste byggeetaper.
+                {t(
+                  "Konti aktiveres via invitation med adgangskode og obligatorisk 2FA. Live AI-chat, privat historik og betaling er endnu ikke tilsluttet.",
+                )}{" "}
               </p>
             </>
           )}
           {tab === "customers" && (
             <>
               <Toolbar
-                title="Dine kunder"
-                action="Tilføj kunde"
+                title={t("Dine kunder")}
+                action={t("Tilføj kunde")}
                 onClick={() => setModal({ type: "customer" })}
               />
               <Table
                 headings={[
-                  "Kunde",
+                  t("Kunde"),
                   "Status",
-                  "Projekter",
-                  "Svarramme",
-                  "Adgang til",
-                  "Handling",
+                  t("Projekter"),
+                  t("Svarramme"),
+                  t("Adgang til"),
+                  t("Handling"),
                 ]}
                 empty={
                   !data.customers.length
-                    ? "Ingen kunder endnu. Tilføj den første kunde for at komme i gang."
+                    ? t(
+                        "Ingen kunder endnu. Tilføj den første kunde for at komme i gang.",
+                      )
                     : undefined
                 }
               >
@@ -452,23 +546,33 @@ function App() {
                     </td>
                     <td>{c.assignments.length}</td>
                     <td>{c.allowance}</td>
-                    <td>{c.expires ? date(c.expires) : "Ingen udløbsdato"}</td>
+                    <td>
+                      {c.expires ? date(c.expires) : t("Ingen udløbsdato")}
+                    </td>
                     <td>
                       <button
                         className="text-button"
-                        aria-label={"Administrér " + c.name}
+                        aria-label={t("Administrér ") + c.name}
                         onClick={() => setModal({ type: "customer", value: c })}
                       >
-                        Administrér
+                        {t("Administrér")}{" "}
                       </button>
+                      {c.account?.status === "pending" && (
+                        <InviteActions
+                          accountId={c.account.id}
+                          invitation={c.account.invitation}
+                          busy={busy}
+                          act={mutate}
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}
               </Table>
               <p className="footnote">
-                Oprettelse sender ingen invitation endnu. En svarramme er en
-                indstilling; faktisk forbrug og håndhævelse tilføjes sammen med
-                AI-chatten.
+                {t(
+                  "Oprettelse sender en personlig invitation. Svarrammen er en indstilling; faktisk forbrug og håndhævelse tilføjes sammen med AI-chatten.",
+                )}{" "}
               </p>
             </>
           )}
@@ -477,28 +581,33 @@ function App() {
               <div className="security-note">
                 <LockKeyIcon size={23} />
                 <p>
-                  <strong>Nøglen er kun synlig, når du tilføjer den.</strong>
+                  <strong>
+                    {t("Nøglen er kun synlig, når du tilføjer den.")}
+                  </strong>
                   <br />
-                  Efter gemning vises kun de sidste fire tegn. Udskiftning
-                  kontrollerer den nye nøgle, før den gamle erstattes.
+                  {t(
+                    "Efter gemning vises kun de sidste fire tegn. Udskiftning kontrollerer den nye nøgle, før den gamle erstattes.",
+                  )}{" "}
                 </p>
               </div>
               <Toolbar
-                title="API-forbindelser"
-                action="Tilføj forbindelse"
+                title={t("API-forbindelser")}
+                action={t("Tilføj forbindelse")}
                 onClick={() => setModal({ type: "connection" })}
               />
               <Table
                 headings={[
-                  "Forbindelse",
-                  "Nøgle",
+                  t("Forbindelse"),
+                  t("Nøgle"),
                   "Status",
-                  "Seneste kontrol",
-                  "Handlinger",
+                  t("Seneste kontrol"),
+                  t("Handlinger"),
                 ]}
                 empty={
                   !data.connections.length
-                    ? "Ingen forbindelser endnu. Tilføj din første OpenAI-projektnøgle."
+                    ? t(
+                        "Ingen forbindelser endnu. Tilføj din første OpenAI-projektnøgle.",
+                      )
                     : undefined
                 }
               >
@@ -508,7 +617,7 @@ function App() {
                       <strong>{c.label}</strong>
                       <small>
                         {c.project_ref} ·{" "}
-                        {c.environment === "test" ? "Test" : "Produktion"}
+                        {c.environment === "test" ? "Test" : t("Produktion")}
                       </small>
                     </td>
                     <td>
@@ -517,7 +626,7 @@ function App() {
                     </td>
                     <td>
                       <span className="pill">
-                        {c.enabled ? statusText(c.status) : "På pause"}
+                        {c.enabled ? statusText(c.status) : t("På pause")}
                       </span>
                     </td>
                     <td>{date(c.last_checked)}</td>
@@ -530,14 +639,14 @@ function App() {
                             mutate("/connections/" + c.id + "/check", {})
                           }
                         >
-                          Kontrollér
+                          {t("Kontrollér")}{" "}
                         </button>
                         <button
                           disabled={busy}
                           className="text-button"
                           onClick={() => setModal({ type: "rotate", value: c })}
                         >
-                          Udskift nøgle
+                          {t("Udskift nøgle")}{" "}
                         </button>
                         <button
                           disabled={busy}
@@ -552,12 +661,12 @@ function App() {
                               },
                               "PUT",
                               c.enabled
-                                ? "Forbindelsen er sat på pause."
-                                : "Forbindelsen er aktiveret.",
+                                ? t("Forbindelsen er sat på pause.")
+                                : t("Forbindelsen er aktiveret."),
                             )
                           }
                         >
-                          {c.enabled ? "Sæt på pause" : "Aktivér"}
+                          {c.enabled ? t("Sæt på pause") : t("Aktivér")}
                         </button>
                       </div>
                     </td>
@@ -565,23 +674,24 @@ function App() {
                 ))}
               </Table>
               <p className="footnote">
-                Kontrollen afprøver adgang til OpenAI-modellisten. Den bekræfter
-                ikke alle modelrettigheder, kreditbalance eller adgang til et
-                promptbibliotek. Prompter tilføjes særskilt under projekter.
+                {t(
+                  "Kontrollen afprøver adgang til OpenAI-modellisten. Den bekræfter ikke alle modelrettigheder, kreditbalance eller adgang til et promptbibliotek. Prompter tilføjes særskilt under projekter.",
+                )}{" "}
               </p>
             </>
           )}
           {tab === "projects" && (
             <>
               <Toolbar
-                title="Dine projekter"
-                action="Tilføj projekt"
+                title={t("Dine projekter")}
+                action={t("Tilføj projekt")}
                 onClick={() => setModal({ type: "project" })}
               />
               {!data.projects.length && (
                 <div className="empty">
-                  Ingen projekter endnu. Opret et projekt, og vælg eventuelt en
-                  API-forbindelse.
+                  {t(
+                    "Ingen projekter endnu. Opret et projekt, og vælg eventuelt en API-forbindelse.",
+                  )}{" "}
                 </div>
               )}
               <div className="project-cards">
@@ -591,30 +701,30 @@ function App() {
                       <div>
                         <h3>{p.name}</h3>
                         <span className="pill">
-                          {p.enabled ? "Aktivt" : "På pause"}
+                          {p.enabled ? t("Aktivt") : t("På pause")}
                         </span>
                       </div>
                       <button
                         className="text-button"
                         onClick={() => setModal({ type: "project", value: p })}
                       >
-                        Redigér
+                        {t("Redigér")}{" "}
                       </button>
                     </div>
-                    <p>{p.description || "Ingen beskrivelse tilføjet."}</p>
+                    <p>{p.description || t("Ingen beskrivelse tilføjet.")}</p>
                     <p className="connection-label">
                       <KeyIcon size={18} />
                       {data.connections.find((c) => c.id === p.connection_id)
-                        ?.label || "Ingen API-forbindelse valgt"}
+                        ?.label || t("Ingen API-forbindelse valgt")}
                     </p>
                     <div className="prompt-heading">
-                      <h4>Promptversioner</h4>
+                      <h4>{t("Promptversioner")}</h4>
                       <button
                         className="text-button"
                         onClick={() => setModal({ type: "prompt", value: p })}
                       >
                         <PlusIcon size={17} />
-                        Tilføj prompt
+                        {t("Tilføj prompt")}{" "}
                       </button>
                     </div>
                     {data.prompts
@@ -634,31 +744,86 @@ function App() {
                               setModal({ type: "version", value: v })
                             }
                           >
-                            Se / ny version
+                            {t("Se / ny version")}{" "}
                           </button>
                         </div>
                       ))}
                     {!data.prompts.some((v) => v.project_id === p.id) && (
                       <p className="muted">
-                        Tilføj den første prompt, før projektet tildeles en
-                        kunde.
+                        {t(
+                          "Tilføj den første prompt, før projektet tildeles en kunde.",
+                        )}{" "}
                       </p>
                     )}
                   </section>
                 ))}
               </div>
               <p className="footnote">
-                Kopiér godkendte instruktioner fra OpenAI Platform, eller skriv
-                dem her. Promptindhold hentes ikke automatisk via en API-nøgle.
-                Nye versioner ændrer ikke eksisterende kundetildelinger.
+                {t(
+                  "Kopiér godkendte instruktioner fra OpenAI Platform, eller skriv dem her. Promptindhold hentes ikke automatisk via en API-nøgle. Nye versioner ændrer ikke eksisterende kundetildelinger.",
+                )}{" "}
               </p>
+            </>
+          )}
+          {tab === "staff" && (
+            <>
+              <Toolbar
+                title="Admins"
+                action={t("Invitér Admin")}
+                onClick={() => setModal({ type: "staff" })}
+              />
+              <p className="footnote">
+                {t("Administratorkonti kræver personlig adgangskode og 2FA.")}
+              </p>
+              <Table
+                headings={[
+                  t("Navn"),
+                  t("Brugernavn"),
+                  t("Rolle"),
+                  "Status",
+                  t("Handling"),
+                ]}
+              >
+                {data.staff.map((a) => (
+                  <tr key={a.id}>
+                    <td>
+                      <strong>{a.name}</strong>
+                      <small>{a.email}</small>
+                    </td>
+                    <td>{a.username || "—"}</td>
+                    <td>Admin</td>
+                    <td>{statusText(a.status)}</td>
+                    <td>
+                      <button
+                        className="text-button"
+                        onClick={() => setModal({ type: "staff", value: a })}
+                      >
+                        {t("Administrér")}
+                      </button>
+                      {a.status === "pending" && (
+                        <InviteActions
+                          accountId={a.id}
+                          invitation={a.invitation}
+                          busy={busy}
+                          act={mutate}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </Table>
             </>
           )}
           {tab === "audit" && (
             <Table
-              headings={["Tidspunkt", "Administrator", "Handling", "Reference"]}
+              headings={[
+                t("Tidspunkt"),
+                t("Administrator"),
+                t("Handling"),
+                "Reference",
+              ]}
               empty={
-                !data.audit.length ? "Ingen aktiviteter endnu." : undefined
+                !data.audit.length ? t("Ingen aktiviteter endnu.") : undefined
               }
             >
               {data.audit.map((a) => (
@@ -676,29 +841,33 @@ function App() {
         </main>
         <footer>
           <ShieldCheckIcon size={17} />
-          Adgang med authenticator · Private kundesamtaler indgår ikke
+          {t(
+            "Adgang med authenticator · Private kundesamtaler indgår ikke",
+          )}{" "}
         </footer>
       </div>
       {modal && (
         <Dialog
           title={
-            modal.type === "customer"
-              ? modal.value
-                ? "Administrér kunde"
-                : "Tilføj kunde"
-              : modal.type === "project"
+            modal.type === "staff"
+              ? t("Administrér Admin")
+              : modal.type === "customer"
                 ? modal.value
-                  ? "Redigér projekt"
-                  : "Tilføj projekt"
-                : modal.type === "connection"
-                  ? "Tilføj API-forbindelse"
-                  : modal.type === "rotate"
-                    ? "Udskift API-nøgle"
-                    : modal.type === "password"
-                      ? "Skift adgangskode"
-                      : modal.type === "reauth"
-                        ? "Bekræft din adgang"
-                        : "Prompt og instruktioner"
+                  ? t("Administrér kunde")
+                  : t("Tilføj kunde")
+                : modal.type === "project"
+                  ? modal.value
+                    ? t("Redigér projekt")
+                    : t("Tilføj projekt")
+                  : modal.type === "connection"
+                    ? t("Tilføj API-forbindelse")
+                    : modal.type === "rotate"
+                      ? t("Udskift API-nøgle")
+                      : modal.type === "password"
+                        ? t("Skift adgangskode")
+                        : modal.type === "reauth"
+                          ? t("Bekræft din adgang")
+                          : t("Prompt og instruktioner")
           }
           onClose={() => {
             if (!busy) {
@@ -709,8 +878,17 @@ function App() {
         >
           {error && (
             <p className="alert" role="alert">
-              {error}
+              {t(error)}
             </p>
+          )}
+          {modal.type === "staff" && (
+            <StaffForm
+              value={modal.value as Account | undefined}
+              busy={busy}
+              save={(id, v) =>
+                mutate("/staff" + (id ? "/" + id : ""), v, id ? "PUT" : "POST")
+              }
+            />
           )}
           {modal.type === "customer" && (
             <CustomerForm
@@ -773,16 +951,17 @@ function App() {
                   "/auth/reauth",
                   { code: f.get("code") },
                   "POST",
-                  "Adgangen er bekræftet i ti minutter.",
+                  t("Adgangen er bekræftet i ti minutter."),
                 );
               }}
             >
               <p>
-                Brug en ny kode fra din authenticator før ændringer af
-                API-nøgler.
+                {t(
+                  "Brug en ny kode fra din authenticator før ændringer af API-nøgler.",
+                )}{" "}
               </p>
               <label>
-                Authenticator-kode
+                {t("Authenticator-kode")}{" "}
                 <input
                   name="code"
                   inputMode="numeric"
@@ -793,7 +972,7 @@ function App() {
                   autoFocus
                 />
               </label>
-              <Save busy={busy} label="Bekræft adgang" />
+              <Save busy={busy} label={t("Bekræft adgang")} />
             </form>
           )}
           {modal.type === "password" && (
@@ -814,9 +993,11 @@ function App() {
                 }
               }}
             >
-              <p>Alle dine aktive sessioner afsluttes efter ændringen.</p>
+              <p>
+                {t("Alle dine aktive sessioner afsluttes efter ændringen.")}
+              </p>
               <label>
-                Nuværende adgangskode
+                {t("Nuværende adgangskode")}{" "}
                 <input
                   name="currentPassword"
                   type="password"
@@ -826,7 +1007,7 @@ function App() {
                 />
               </label>
               <label>
-                Ny adgangskode · mindst 14 tegn
+                {t("Ny adgangskode · mindst 14 tegn")}{" "}
                 <input
                   name="newPassword"
                   type="password"
@@ -837,7 +1018,7 @@ function App() {
                 />
               </label>
               <label>
-                Ny authenticator-kode
+                {t("Ny authenticator-kode")}{" "}
                 <input
                   name="code"
                   inputMode="numeric"
@@ -847,7 +1028,7 @@ function App() {
                   required
                 />
               </label>
-              <Save busy={busy} label="Skift adgangskode" />
+              <Save busy={busy} label={t("Skift adgangskode")} />
             </form>
           )}
         </Dialog>
@@ -868,15 +1049,16 @@ function Login({
     <div className="auth-page">
       <div className="auth-brand">
         <Brand />
+        <LanguagePicker />
       </div>
       <section className="auth-card">
         <span className="icon-circle">
           <LockKeyIcon size={30} />
         </span>
-        <p className="eyebrow">VELKOMMEN TILBAGE</p>
-        <h1>Dit overblik begynder her.</h1>
+        <p className="eyebrow">{t("VELKOMMEN TILBAGE")}</p>
+        <h1>{t("Dit overblik begynder her.")}</h1>
         <p className="muted">
-          Log ind for at administrere kunder, projekter og API-forbindelser.
+          {t("Log ind med din personlige konto og authenticator.")}{" "}
         </p>
         <form
           onSubmit={async (e) => {
@@ -900,17 +1082,17 @@ function Login({
           }}
         >
           <label>
-            E-mail
+            {t("E-mail eller brugernavn")}{" "}
             <input
               name="email"
-              type="email"
+              type="text"
               autoComplete="username"
               required
               autoFocus
             />
           </label>
           <label>
-            Adgangskode
+            {t("Adgangskode")}{" "}
             <input
               name="password"
               type="password"
@@ -920,7 +1102,7 @@ function Login({
             />
           </label>
           <label>
-            Authenticator-kode
+            {t("Authenticator-kode")}{" "}
             <input
               name="code"
               inputMode="numeric"
@@ -928,19 +1110,20 @@ function Login({
               pattern="[0-9]{6}"
               maxLength={6}
               required
-              placeholder="6 cifre"
+              placeholder={t("6 cifre")}
             />
           </label>
           {error && (
             <p className="alert" role="alert">
-              {error}
+              {t(error)}
             </p>
           )}
-          <Save busy={busy} label="Log ind" />
+          <Save busy={busy} label={t("Log ind")} />
         </form>
         <p className="footnote">
-          Kun for administratorer. Adgang kræver en personlig konto og
-          authenticator. Første konto oprettes gennem den private opsætning.
+          {t(
+            "Admin og Customer kræver begge adgangskode og 2FA. Første Admin oprettes gennem den private opsætning.",
+          )}{" "}
         </p>
       </section>
       <p className="auth-footer">AI · Kundetypeassistent</p>
@@ -952,49 +1135,58 @@ function Setup() {
       secret: string;
       uri: string;
       csrf: string;
+      identity: { name: string; email: string; username: string } | null;
     } | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [done, setDone] = useState("");
   useEffect(() => {
-    api<{ secret: string; uri: string; csrf: string }>("/setup")
+    api<{
+      secret: string;
+      uri: string;
+      csrf: string;
+      identity: { name: string; email: string; username: string } | null;
+    }>("/setup")
       .then(setSetup)
       .catch(() =>
         setError(
-          "Den private opsætning er kun tilgængelig gennem den lokale forbindelse, før den første administrator er oprettet.",
+          t(
+            "Den private opsætning er kun tilgængelig gennem den lokale forbindelse, før den første administrator er oprettet.",
+          ),
         ),
       );
   }, []);
   return (
     <div className="auth-page">
       <Brand />
+      <LanguagePicker />
       <section className="auth-card">
-        <p className="eyebrow">PRIVAT OPSÆTNING</p>
-        <h1>Opret din administrator.</h1>
+        <p className="eyebrow">{t("PRIVAT OPSÆTNING")}</p>
+        <h1>{t("Opret din administrator.")}</h1>
         {error && (
           <p role="alert" className="alert">
-            {error}
+            {t(error)}
           </p>
         )}
         {done ? (
           <>
             <p role="status" className="notice">
-              {done}
+              {t(done)}
             </p>
             <a
               className="button primary"
               href="https://ai.igurl.dk/backoffice/"
             >
-              Gå til login
+              {t("Gå til login")}{" "}
             </a>
           </>
         ) : (
           setup && (
             <>
               <p>
-                Tilføj først denne opsætningsnøgle manuelt i din authenticator
-                som en tidsbaseret kode. Gem den i din godkendte adgangskodeboks
-                til gendannelse.
+                {t(
+                  "Tilføj først denne opsætningsnøgle manuelt i din authenticator som en tidsbaseret kode. Gem den i din godkendte adgangskodeboks til gendannelse.",
+                )}{" "}
               </p>
               <code className="setup-secret">{setup.secret}</code>
               <form
@@ -1004,14 +1196,12 @@ function Setup() {
                   setError("");
                   const f = new FormData(e.currentTarget);
                   try {
-                    const result = await api<{ message: string }>(
-                      "/setup",
-                      "POST",
-                      Object.fromEntries(f),
-                      setup.csrf,
-                    );
+                    const result = await api<{
+                      message: string;
+                      messageKey: string;
+                    }>("/setup", "POST", Object.fromEntries(f), setup.csrf);
                     setSetup(null);
-                    setDone(result.message);
+                    setDone(result.messageKey || result.message);
                   } catch (e) {
                     setError((e as Error).message);
                   } finally {
@@ -1020,20 +1210,41 @@ function Setup() {
                 }}
               >
                 <label>
-                  Dit navn
-                  <input name="name" maxLength={100} required autoFocus />
+                  {t("Dit navn")}{" "}
+                  <input
+                    name="name"
+                    maxLength={100}
+                    defaultValue={setup.identity?.name}
+                    readOnly={!!setup.identity}
+                    required
+                    autoFocus
+                  />
                 </label>
                 <label>
-                  E-mail
+                  {t("E-mail")}{" "}
                   <input
                     name="email"
                     type="email"
                     autoComplete="username"
+                    defaultValue={setup.identity?.email}
+                    readOnly={!!setup.identity}
                     required
                   />
                 </label>
                 <label>
-                  Ny adgangskode · mindst 14 tegn
+                  {t("Brugernavn")}{" "}
+                  <input
+                    name="username"
+                    defaultValue={setup.identity?.username}
+                    readOnly={!!setup.identity}
+                    pattern="[a-z0-9][a-z0-9_.-]{2,39}"
+                    minLength={3}
+                    maxLength={40}
+                    required
+                  />
+                </label>
+                <label>
+                  {t("Ny adgangskode · mindst 14 tegn")}{" "}
                   <input
                     name="password"
                     type="password"
@@ -1044,7 +1255,7 @@ function Setup() {
                   />
                 </label>
                 <label>
-                  Authenticator-kode
+                  {t("Authenticator-kode")}{" "}
                   <input
                     name="code"
                     inputMode="numeric"
@@ -1054,7 +1265,7 @@ function Setup() {
                     required
                   />
                 </label>
-                <Save busy={busy} label="Opret administrator" />
+                <Save busy={busy} label={t("Opret administrator")} />
               </form>
             </>
           )
@@ -1089,7 +1300,7 @@ function Dialog({
     >
       <div className="dialog-heading">
         <h2 id="dialog-title">{title}</h2>
-        <button aria-label="Luk" className="icon-button" onClick={onClose}>
+        <button aria-label={t("Luk")} className="icon-button" onClick={onClose}>
           <XIcon size={24} />
         </button>
       </div>
@@ -1126,7 +1337,13 @@ function Table({
   children: ReactNode;
 }) {
   return (
-    <div className="table-scroll">
+    <div
+      className="table-scroll"
+      tabIndex={0}
+      role="region"
+      aria-label={t("Tabel med vandret rulning")}
+    >
+      <p className="table-hint">{t("Rul til siden for flere kolonner.")}</p>
       <table>
         <thead>
           <tr>
@@ -1143,7 +1360,7 @@ function Table({
 }
 function Save({
   busy,
-  label = "Gem ændringer",
+  label = t("Gem ændringer"),
 }: {
   busy: boolean;
   label?: string;
@@ -1154,7 +1371,7 @@ function Save({
         {busy ? (
           <>
             <ArrowClockwiseIcon size={19} />
-            Arbejder…
+            {t("Arbejder…")}{" "}
           </>
         ) : (
           label
@@ -1196,7 +1413,7 @@ function CustomerForm({
     >
       <div className="form-grid">
         <label>
-          Navn
+          {t("Navn")}{" "}
           <input
             name="name"
             defaultValue={c?.name}
@@ -1206,25 +1423,36 @@ function CustomerForm({
           />
         </label>
         <label>
-          E-mail
+          {t("E-mail")}{" "}
           <input
             name="email"
             defaultValue={c?.email}
             type="email"
             maxLength={254}
+            readOnly={!!c?.account}
             required
           />
         </label>
         <label>
-          Status
-          <select name="status" defaultValue={c?.status || "pending"}>
-            <option value="pending">Afventer</option>
-            <option value="active">Aktiv</option>
-            <option value="paused">På pause</option>
+          {t("Invitationssprog")}{" "}
+          <select
+            name="locale"
+            defaultValue={c?.account?.locale || getLanguage()}
+          >
+            <option value="en">English</option>
+            <option value="da">Dansk</option>
           </select>
         </label>
         <label>
-          Svarramme
+          Status
+          <select name="status" defaultValue={c?.status || "pending"}>
+            <option value="pending">{t("Afventer")}</option>
+            <option value="active">{t("Aktiv")}</option>
+            <option value="paused">{t("På pause")}</option>
+          </select>
+        </label>
+        <label>
+          {t("Svarramme")}{" "}
           <input
             name="allowance"
             type="number"
@@ -1235,12 +1463,12 @@ function CustomerForm({
           />
         </label>
         <label>
-          Adgang til · valgfri dato
+          {t("Adgang til · valgfri dato")}{" "}
           <input name="expires" type="date" defaultValue={c?.expires || ""} />
         </label>
       </div>
       <fieldset>
-        <legend>Projekter og promptversioner</legend>
+        <legend>{t("Projekter og promptversioner")}</legend>
         {data.projects.map((p) => {
           const selected = assignments.find((a) => a.projectId === p.id),
             versions = data.prompts.filter((v) => v.project_id === p.id);
@@ -1263,11 +1491,11 @@ function CustomerForm({
                   }
                 />
                 {p.name}
-                {!p.enabled ? " · på pause" : ""}
+                {!p.enabled ? t(" · på pause") : ""}
               </label>
               {selected ? (
                 <select
-                  aria-label={"Prompt til " + p.name}
+                  aria-label={t("Prompt til ") + p.name}
                   value={selected.versionId}
                   onChange={(e) =>
                     setAssignments((previous) =>
@@ -1287,7 +1515,9 @@ function CustomerForm({
                 </select>
               ) : (
                 <small>
-                  {versions.length ? "Ikke tildelt" : "Tilføj først en prompt"}
+                  {versions.length
+                    ? t("Ikke tildelt")
+                    : t("Tilføj først en prompt")}
                 </small>
               )}
             </div>
@@ -1295,13 +1525,16 @@ function CustomerForm({
         })}
         {!data.projects.length && (
           <p className="muted">
-            Opret projekter og promptversioner for at tildele adgang.
+            {t(
+              "Opret projekter og promptversioner for at tildele adgang.",
+            )}{" "}
           </p>
         )}
       </fieldset>
       <p className="footnote">
-        Kontoen gemmes uden at sende e-mail. Kundelogin og invitationslevering
-        følger i næste etape.
+        {t(
+          "En ny kunde får en invitation til at vælge brugernavn og adgangskode og tilknytte en authenticator. Linket udløber efter 48 timer. Eksisterende konti får ikke en ny invitation ved redigering.",
+        )}{" "}
       </p>
       <Save busy={busy} />
     </form>
@@ -1331,7 +1564,7 @@ function ProjectForm({
       }}
     >
       <label>
-        Projektnavn
+        {t("Projektnavn")}{" "}
         <input
           name="name"
           defaultValue={p?.name}
@@ -1341,7 +1574,7 @@ function ProjectForm({
         />
       </label>
       <label>
-        Beskrivelse
+        {t("Beskrivelse")}{" "}
         <textarea
           name="description"
           defaultValue={p?.description}
@@ -1350,13 +1583,13 @@ function ProjectForm({
         />
       </label>
       <label>
-        API-forbindelse
+        {t("API-forbindelse")}{" "}
         <select name="connectionId" defaultValue={p?.connection_id || ""}>
-          <option value="">Vælg senere</option>
+          <option value="">{t("Vælg senere")}</option>
           {data.connections.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.label} · {c.environment === "test" ? "Test" : "Produktion"}
-              {c.enabled ? "" : " · på pause"}
+              {c.label} · {c.environment === "test" ? "Test" : t("Produktion")}
+              {c.enabled ? "" : t(" · på pause")}
             </option>
           ))}
         </select>
@@ -1367,12 +1600,12 @@ function ProjectForm({
           type="checkbox"
           defaultChecked={p ? !!p.enabled : true}
         />
-        Projektet er aktivt
+        {t("Projektet er aktivt")}{" "}
       </label>
       <p className="footnote">
-        Du kan vælge den første forbindelse senere. Et tilknyttet projekt med
-        promptversioner beholder sin OpenAI-forbindelse. Opret et nyt projekt,
-        hvis det skal flyttes til en anden forbindelse.
+        {t(
+          "Du kan vælge den første forbindelse senere. Et tilknyttet projekt med promptversioner beholder sin OpenAI-forbindelse. Opret et nyt projekt, hvis det skal flyttes til en anden forbindelse.",
+        )}{" "}
       </p>
       <Save busy={busy} />
     </form>
@@ -1399,23 +1632,23 @@ function ConnectionForm({
     >
       {c ? (
         <p>
-          Ny nøgle til <strong>{c.label}</strong> · {c.project_ref}. Brug en
-          nøgle fra det samme OpenAI-projekt.
+          {t("Ny nøgle til")} <strong>{c.label}</strong> · {c.project_ref}
+          {t(". Brug en nøgle fra det samme OpenAI-projekt.")}{" "}
         </p>
       ) : (
         <>
           <label>
-            Navn på forbindelsen
+            {t("Navn på forbindelsen")}{" "}
             <input
               name="label"
-              placeholder="F.eks. Helles grønne assistent"
+              placeholder={t("F.eks. Helles grønne assistent")}
               maxLength={80}
               required
               autoFocus
             />
           </label>
           <label>
-            OpenAI-projekt-ID
+            {t("OpenAI-projekt-ID")}{" "}
             <input
               name="projectRef"
               placeholder="proj_…"
@@ -1425,16 +1658,16 @@ function ConnectionForm({
             />
           </label>
           <label>
-            Miljø
+            {t("Miljø")}{" "}
             <select name="environment" defaultValue="test">
               <option value="test">Test</option>
-              <option value="production">Produktion</option>
+              <option value="production">{t("Produktion")}</option>
             </select>
           </label>
         </>
       )}
       <label>
-        {c ? "Ny API-nøgle" : "API-nøgle"}
+        {c ? t("Ny API-nøgle") : t("API-nøgle")}
         <input
           name="apiKey"
           type="password"
@@ -1448,14 +1681,13 @@ function ConnectionForm({
         />
       </label>
       <p className="footnote">
-        Indsæt din egen projektnøgle. Den sendes til serveren over den aktuelle
-        forbindelse og gemmes krypteret efter en vellykket kontrol. Nøglen
-        returneres aldrig til browseren. Brug kun nøgler fra den angivne
-        OpenAI-konto og projekt.
+        {t(
+          "Indsæt din egen projektnøgle. Den sendes til serveren over den aktuelle forbindelse og gemmes krypteret efter en vellykket kontrol. Nøglen returneres aldrig til browseren. Brug kun nøgler fra den angivne OpenAI-konto og projekt.",
+        )}{" "}
       </p>
       <Save
         busy={busy}
-        label={c ? "Kontrollér og udskift" : "Kontrollér og gem"}
+        label={c ? t("Kontrollér og udskift") : t("Kontrollér og gem")}
       />
     </form>
   );
@@ -1496,16 +1728,20 @@ function PromptForm({
     >
       <p className="notice">
         {version
-          ? "Gemning opretter en ny, uforanderlig version. Eksisterende tildelinger bevares."
-          : "Gennemgå instruktionerne, før du gemmer den første version og tildeler den til kunder."}
+          ? t(
+              "Gemning opretter en ny, uforanderlig version. Eksisterende tildelinger bevares.",
+            )
+          : t(
+              "Gennemgå instruktionerne, før du gemmer den første version og tildeler den til kunder.",
+            )}
       </p>
       {error && (
         <p role="alert" className="alert">
-          {error}
+          {t(error)}
         </p>
       )}
       <label>
-        Promptnavn
+        {t("Promptnavn")}{" "}
         <input
           name="name"
           defaultValue={version?.name}
@@ -1515,16 +1751,16 @@ function PromptForm({
         />
       </label>
       <label>
-        Kildereference · valgfri
+        {t("Kildereference · valgfri")}{" "}
         <input
           name="sourceRef"
           defaultValue={version?.source_ref}
           maxLength={150}
-          placeholder="Oprindeligt prompt-ID og version"
+          placeholder={t("Oprindeligt prompt-ID og version")}
         />
       </label>
       <label>
-        Instruktioner
+        {t("Instruktioner")}{" "}
         <textarea
           name="instructions"
           rows={10}
@@ -1536,36 +1772,340 @@ function PromptForm({
         />
       </label>
       <p className="footnote">
-        Der er ingen automatisk synkronisering med OpenAI Platform. Kopiér kun
-        instruktioner, du har ret til at bruge. Evaluering mod et godkendt
-        testsæt tilføjes før kundepilot.
+        {t(
+          "Der er ingen automatisk synkronisering med OpenAI Platform. Kopiér kun instruktioner, du har ret til at bruge. Evaluering mod et godkendt testsæt tilføjes før kundepilot.",
+        )}{" "}
       </p>
-      <Save busy={busy || loading || !!error} label="Gem ny version" />
+      <Save busy={busy || loading || !!error} label={t("Gem ny version")} />
     </form>
   );
 }
 function auditText(action: string) {
   return (
     {
-      "admin.enrolled": "Administrator oprettet",
+      "staff.created": t("Admin inviteret"),
+      "staff.updated": t("Admin opdateret"),
+      "staff.disabled": t("Admin deaktiveret"),
+      "invitation.created": t("Invitation oprettet"),
+      "invitation.queued": t("Invitation afleveret til mailserver"),
+      "invitation.failed": t("Invitation mislykkedes"),
+      "invitation.revoked": t("Invitation tilbagekaldt"),
+      "account.activated": t("Konto aktiveret"),
+      "admin.password_changed": t("Adgangskode ændret"),
+      "admin.enrolled": t("Administrator oprettet"),
       "admin.login": "Login",
-      "admin.logout": "Log ud",
-      "admin.reauthenticated": "Adgang bekræftet",
-      "customer.created": "Kunde oprettet",
-      "customer.updated": "Kunde opdateret",
-      "project.created": "Projekt oprettet",
-      "project.updated": "Projekt opdateret",
-      "prompt.version_created": "Promptversion oprettet",
-      "prompt.viewed": "Prompt åbnet",
-      "connection.created": "API-forbindelse tilføjet",
-      "connection.rotated": "API-nøgle udskiftet",
-      "connection.paused": "API-forbindelse sat på pause",
-      "connection.updated": "API-forbindelse opdateret",
+      "admin.logout": t("Log ud"),
+      "admin.reauthenticated": t("Adgang bekræftet"),
+      "customer.created": t("Kunde oprettet"),
+      "customer.updated": t("Kunde opdateret"),
+      "project.created": t("Projekt oprettet"),
+      "project.updated": t("Projekt opdateret"),
+      "prompt.version_created": t("Promptversion oprettet"),
+      "prompt.viewed": t("Prompt åbnet"),
+      "connection.created": t("API-forbindelse tilføjet"),
+      "connection.rotated": t("API-nøgle udskiftet"),
+      "connection.paused": t("API-forbindelse sat på pause"),
+      "connection.updated": t("API-forbindelse opdateret"),
     }[action] ||
     (action.startsWith("connection.checked.")
-      ? "API-forbindelse kontrolleret · " +
+      ? t("API-forbindelse kontrolleret · ") +
         statusText(action.split(".").at(-1)!)
       : action)
+  );
+}
+function InviteActions({
+  accountId,
+  invitation,
+  busy,
+  act,
+}: {
+  accountId: string;
+  invitation: Invitation;
+  busy: boolean;
+  act: (path: string, v: unknown) => Promise<boolean>;
+}) {
+  return (
+    <div className="invite-actions">
+      <small>
+        {invitation ? statusText(invitation.status) : t("Ingen invitation")}
+      </small>
+      <button
+        className="text-button"
+        disabled={busy}
+        onClick={() => act("/invitations/" + accountId + "/resend", {})}
+      >
+        {t("Send invitation igen")}
+      </button>
+      {invitation?.status === "sent" && (
+        <button
+          className="text-button"
+          disabled={busy}
+          onClick={() => act("/invitations/" + accountId + "/revoke", {})}
+        >
+          {t("Tilbagekald invitation")}
+        </button>
+      )}
+    </div>
+  );
+}
+function StaffForm({
+  value: a,
+  busy,
+  save,
+}: {
+  value?: Account;
+  busy: boolean;
+  save: (id: string | undefined, v: unknown) => Promise<boolean>;
+}) {
+  return (
+    <form
+      onSubmit={(e) => {
+        const f = values(e);
+        save(a?.id, f);
+      }}
+    >
+      <label>
+        {t("Navn")}
+        <input name="name" defaultValue={a?.name} maxLength={100} required />
+      </label>
+      {!a && (
+        <label>
+          {t("E-mail")}
+          <input name="email" type="email" maxLength={254} required />
+        </label>
+      )}
+      <label>
+        {t("Invitationssprog")}
+        <select name="locale" defaultValue={a?.locale || getLanguage()}>
+          <option value="en">English</option>
+          <option value="da">Dansk</option>
+        </select>
+      </label>
+      {a && (
+        <label>
+          Status
+          <select name="status" defaultValue={a.status}>
+            {a.status === "pending" ? (
+              <option value="pending">{t("Afventer")}</option>
+            ) : (
+              <>
+                <option value="active">{t("Aktiv")}</option>
+                <option value="paused">{t("På pause")}</option>
+              </>
+            )}
+          </select>
+        </label>
+      )}
+      <p className="footnote">
+        {t(
+          "En ny Admin får en personlig invitation og skal vælge sin egen adgangskode og tilknytte en authenticator.",
+        )}
+      </p>
+      <Save busy={busy} label={a ? t("Gem ændringer") : t("Send invitation")} />
+    </form>
+  );
+}
+function Registration({ token }: { token: string }) {
+  const [details, setDetails] = useState<{
+      name: string;
+      email: string;
+      secret: string;
+      csrf: string;
+      role: string;
+    } | null>(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [done, setDone] = useState(false);
+  return (
+    <div className="auth-page">
+      <Brand />
+      <LanguagePicker />
+      <section className="auth-card">
+        <p className="eyebrow">{t("DIN PERSONLIGE INVITATION")}</p>
+        <h1>{t("Velkommen til Kundetypeassistent")}</h1>
+        {done ? (
+          <>
+            <p className="notice">
+              {t(
+                "Din konto er aktiveret. Log ind med adgangskode og en ny authenticator-kode.",
+              )}
+            </p>
+            <a className="button primary" href="/backoffice/">
+              {t("Gå til login")}
+            </a>
+          </>
+        ) : !details ? (
+          <>
+            <p>
+              {t(
+                "Aktivér din konto. Du vælger selv din adgangskode og skal tilknytte en authenticator.",
+              )}
+            </p>
+            <button
+              className="button primary"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError("");
+                try {
+                  setDetails(await api("/register/begin", "POST", { token }));
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {t("Fortsæt til registrering")}
+            </button>
+          </>
+        ) : (
+          <>
+            <p>
+              <strong>{details.name}</strong> · {details.email} · {details.role}
+            </p>
+            <p>
+              {t(
+                "Tilføj denne nøgle i din authenticator som en tidsbaseret konto. Gem den sikkert til gendannelse.",
+              )}
+            </p>
+            <code className="setup-secret">{details.secret}</code>
+            <form
+              onSubmit={async (e) => {
+                const f = values(e);
+                setBusy(true);
+                setError("");
+                try {
+                  await api("/register/complete", "POST", f, details.csrf);
+                  setDetails(null);
+                  setDone(true);
+                } catch (e) {
+                  setError((e as Error).message);
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <label>
+                {t("Brugernavn")}
+                <input
+                  name="username"
+                  autoComplete="username"
+                  pattern="[a-z0-9][a-z0-9_.-]{2,39}"
+                  minLength={3}
+                  maxLength={40}
+                  required
+                />
+                <small>
+                  {t(
+                    "3–40 små bogstaver, tal, punktum, bindestreg eller understregning.",
+                  )}
+                </small>
+              </label>
+              <label>
+                {t("Ny adgangskode · mindst 14 tegn")}
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={14}
+                  maxLength={256}
+                  required
+                />
+              </label>
+              <label>
+                {t("Authenticator-kode")}
+                <input
+                  name="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  required
+                />
+              </label>
+              <Save busy={busy} label={t("Aktivér konto")} />
+            </form>
+          </>
+        )}
+        {error && (
+          <p className="alert" role="alert">
+            {t(error)}
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+function CustomerHome({
+  session,
+  logout,
+}: {
+  session: Session;
+  logout: () => void;
+}) {
+  const [home, setHome] = useState<{
+      name: string;
+      projects: { id: string; name: string; description: string }[];
+    } | null>(null),
+    [error, setError] = useState("");
+  useEffect(() => {
+    api<{
+      name: string;
+      projects: { id: string; name: string; description: string }[];
+    }>("/customer/home")
+      .then(setHome)
+      .catch((e) => setError(e.message));
+  }, []);
+  return (
+    <div className="customer-home">
+      <header>
+        <Brand />
+        <LanguagePicker />
+        <button
+          className="button secondary"
+          onClick={async () => {
+            try {
+              await api("/auth/logout", "POST", {}, session.csrf);
+              logout();
+            } catch (e) {
+              setError((e as Error).message);
+            }
+          }}
+        >
+          {t("Log ud")}
+        </button>
+      </header>
+      <main>
+        <p className="eyebrow">CUSTOMER</p>
+        <h1>
+          {t("Velkommen")}, {session.name}
+        </h1>
+        <p>{t("Din konto er beskyttet med adgangskode og 2FA.")}</p>
+        <h2>{t("Dine projekter")}</h2>
+        {error && (
+          <p className="alert" role="alert">
+            {t(error)}
+          </p>
+        )}
+        <div className="projects">
+          {home?.projects.map((p) => (
+            <section key={p.id} className="project-card">
+              <h3>{p.name}</h3>
+              <p>{p.description}</p>
+            </section>
+          ))}
+        </div>
+        {home && !home.projects.length && (
+          <p>{t("Du har endnu ingen tildelte projekter.")}</p>
+        )}
+        <p className="notice">
+          {t(
+            "Live AI-chat og privat historik er endnu ikke åbnet. Du får besked, når din assistent er klar.",
+          )}
+        </p>
+      </main>
+    </div>
   );
 }
 createRoot(document.getElementById("root")!).render(<App />);
