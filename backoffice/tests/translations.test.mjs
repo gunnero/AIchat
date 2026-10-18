@@ -17,6 +17,8 @@ test("all Danish API messages and static UI text have translations, while user c
     "src/AuthenticatorSetup.tsx",
     "src/AccountPanel.tsx",
     "src/UsagePage.tsx",
+    "src/ProjectColorPicker.tsx",
+    "src/project-colors.ts",
     "src/Dialog.tsx",
     "src/PromptImportForm.tsx",
     "src/PlatformPromptForm.tsx",

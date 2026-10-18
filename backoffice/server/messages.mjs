@@ -86,6 +86,14 @@ export const english = {
   "Rapportering tilsluttet": "Reporting connected",
   "Rapportering afbrudt": "Reporting disconnected",
   "Farve på arbejdsrum": "Workspace colour",
+  Brugerdefineret: "Custom",
+  "Brugerdefineret farve": "Custom colour",
+  "Vælg farve": "Choose colour",
+  "Hex-farvekode": "Hex colour code",
+  "Dit arbejdsrum": "Your workspace",
+  "Eksempel på sidemenuens farve": "Sidebar colour preview",
+  "Brug # og seks tegn, fx #3B82F6. Tekst og knapper tilpasses automatisk, så de er lette at læse.":
+    "Use # and six characters, e.g. #3B82F6. Text and buttons adjust automatically to stay readable.",
   "Sidemenuen bruger denne farve, når projektet er valgt.":
     "The sidebar uses this colour when this project is selected.",
   Sort: "Black",

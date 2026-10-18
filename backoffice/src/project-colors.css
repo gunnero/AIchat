@@ -80,6 +80,34 @@
   background: var(--cw-bg);
   border: 1px solid #767676;
 }
+.project-custom-color {
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+  padding-top: 18px;
+}
+.project-custom-fields {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 16px;
+}
+.project-custom-fields input[type="color"] {
+  height: 47px;
+  padding: 5px;
+  cursor: pointer;
+}
+.project-custom-preview {
+  display: grid;
+  gap: 4px;
+  padding: 20px;
+  border: 1px solid var(--cw-border);
+  border-radius: 9px;
+  background: var(--cw-bg);
+  color: var(--cw-fg);
+}
+.project-custom-preview span {
+  color: var(--cw-muted);
+  font-size: 14px;
+}
 @media (max-width: 600px) {
   .project-color-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));

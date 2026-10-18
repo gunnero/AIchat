@@ -65,6 +65,7 @@ test.each(["en", "da"] as const)(
       { ...projects[0], color: "yellow" },
       { ...projects[1], color: "purple" },
       { id: "p3", name: "Green platform", description: "", color: "green" },
+      { id: "p5", name: "Custom platform", description: "", color: "#F08A24" },
       {
         id: "p4",
         name: "Unknown platform",
@@ -91,11 +92,15 @@ test.each(["en", "da"] as const)(
     for (const [id, color] of [
       ["p2", "purple"],
       ["p3", "green"],
+      ["p5", "#f08a24"],
       ["p4", "black"],
       ["p1", "yellow"],
     ]) {
       await user.selectOptions(selector, id);
       expect(shell).toHaveAttribute("data-project-color", color);
+      expect((shell as HTMLElement).style.getPropertyValue("--cw-bg")).toBe(
+        color.startsWith("#") ? color : "",
+      );
     }
     expect(
       mocked.mock.calls.every(([, method = "GET"]) => method === "GET"),

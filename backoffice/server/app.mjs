@@ -62,7 +62,15 @@ const projectInput = z
     description: z.string().trim().max(1000),
     connectionId: z.uuid().nullable(),
     enabled: z.boolean(),
-    color: z.enum(["black", "yellow", "purple", "green"]).optional(),
+    color: z
+      .union([
+        z.enum(["black", "yellow", "purple", "green"]),
+        z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .transform((v) => v.toLowerCase()),
+      ])
+      .optional(),
   })
   .strict();
 const connectionInput = z

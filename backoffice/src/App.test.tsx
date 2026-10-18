@@ -218,6 +218,20 @@ test.each(["en", "da"] as const)(
     );
     await user.click(screen.getByRole("button", { name: t("Redigér") }));
     expect(screen.getByRole("radio", { name: t("Grøn") })).toBeChecked();
+    await user.click(
+      screen.getByRole("radio", { name: t("Brugerdefineret farve") }),
+    );
+    const custom = screen.getByLabelText(t("Hex-farvekode"));
+    await user.clear(custom);
+    await user.type(custom, "#F08A24");
+    await user.click(screen.getByRole("button", { name: t("Gem ændringer") }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(project.color).toBe("#F08A24");
+    await user.click(screen.getByRole("button", { name: t("Redigér") }));
+    expect(
+      screen.getByRole("radio", { name: t("Brugerdefineret farve") }),
+    ).toBeChecked();
+    expect(screen.getByLabelText(t("Hex-farvekode"))).toHaveValue("#f08a24");
   },
 );
 

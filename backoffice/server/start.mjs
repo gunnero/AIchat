@@ -50,7 +50,7 @@ for (const [db, expected] of [
 }
 if (
   (await database.query("SELECT max(version) AS v FROM schema_version")).rows[0]
-    .v !== 7
+    .v !== 8
 )
   throw new Error("Database migration required");
 const app = await buildServer({

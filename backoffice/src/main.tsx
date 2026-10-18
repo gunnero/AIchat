@@ -11,10 +11,12 @@ import {
   type ReportingConnection,
 } from "./UsagePage";
 import {
-  projectColors,
+  projectColorLabel,
+  projectColorStyle,
   projectColor,
   type ProjectColor,
 } from "./project-colors";
+import { ProjectColorPicker } from "./ProjectColorPicker";
 import { t, getLanguage, useLanguage, LanguagePicker } from "./i18n";
 import {
   useEffect,
@@ -881,12 +883,11 @@ export function App() {
                           <span
                             className="project-color-badge"
                             data-project-color={projectColor(p.color)}
+                            style={projectColorStyle(p.color)}
                           >
-                            {t(
-                              projectColors.find(
-                                (color) => color.id === projectColor(p.color),
-                              )!.label,
-                            )}
+                            {t(projectColorLabel(p.color))}
+                            {projectColor(p.color).startsWith("#") &&
+                              " · " + projectColor(p.color).toUpperCase()}
                           </span>
                         </div>
                       </div>
@@ -1808,29 +1809,7 @@ function ProjectForm({
         />
         {t("Projektet er aktivt")}{" "}
       </label>
-      <fieldset>
-        <legend>{t("Farve på arbejdsrum")}</legend>
-        <div className="project-color-options">
-          {projectColors.map((color) => (
-            <label
-              className="project-color-option"
-              data-project-color={color.id}
-              key={color.id}
-            >
-              <input
-                type="radio"
-                name="color"
-                value={color.id}
-                defaultChecked={projectColor(p?.color) === color.id}
-              />
-              {t(color.label)}
-            </label>
-          ))}
-        </div>
-        <p className="footnote">
-          {t("Sidemenuen bruger denne farve, når projektet er valgt.")}
-        </p>
-      </fieldset>
+      <ProjectColorPicker initial={p?.color} />
       <p className="footnote">
         {t(
           "Du kan vælge den første forbindelse senere. Et tilknyttet projekt med promptversioner beholder sin OpenAI-forbindelse. Opret et nyt projekt, hvis det skal flyttes til en anden forbindelse.",

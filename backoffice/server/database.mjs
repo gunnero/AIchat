@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { linkTable } from "./platform-schema.mjs";
 import { accountTables } from "./account-schema.mjs";
-import { appearanceTable } from "./appearance-schema.mjs";
+import { sqliteAppearanceTable } from "./custom-color-schema.mjs";
 import { reportingTable } from "./reporting-schema.mjs";
 export function openDatabase(path) {
   const db = new DatabaseSync(path);
@@ -63,9 +63,7 @@ export function openDatabase(path) {
       .get()
   )
     transaction(db, () => db.exec(accountTables));
-  db.exec(
-    appearanceTable.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"),
-  );
+  db.exec(sqliteAppearanceTable);
   db.exec(reportingTable.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"));
   return db;
 }
