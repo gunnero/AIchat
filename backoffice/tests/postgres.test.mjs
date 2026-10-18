@@ -1347,12 +1347,13 @@ pgtest(
       journal = join(dir, "deletions.jsonl");
     const restore = openPostgres(process.env.TEST_RESTORE_DATABASE_URL);
     try {
-      await writeFile(join(dir, "vault.key"), key, { mode: 0o600 });
+      await writeFile(join(dir, "configured-vault.key"), key, { mode: 0o600 });
       await writeFile(journal, "", { mode: 0o600 });
       await backupPostgres({
         databaseUrl: uri("ai_migrator"),
         state: dir,
         destination: backup,
+        vaultKeyFile: join(dir, "configured-vault.key"),
       });
       await req(a, url(p, c.id), "DELETE", {});
       await writeFile(

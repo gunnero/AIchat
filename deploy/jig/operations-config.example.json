@@ -1,0 +1,13 @@
+{
+  "appRoot": "/opt/ai-kundetypeassistent/current",
+  "node": "/opt/ai-kundetypeassistent/runtime/bin/node",
+  "stateDir": "/var/lib/ai-kundetypeassistent",
+  "vaultFile": "/var/lib/ai-kundetypeassistent/vault.key",
+  "operationsState": "/var/lib/ai-kundetype-operations",
+  "runtimeDir": "/run/ai-kundetype-operations",
+  "mount": "/mnt/HC_Volume_106669788",
+  "mountUuid": "REPLACE_WITH_VERIFIED_VOLUME_UUID",
+  "repository": "/mnt/HC_Volume_106669788/ai-kundetypeassistent-backups",
+  "recipient": "REPLACE_WITH_AGE_PUBLIC_RECIPIENT_ONLY",
+  "alertTo": "operator@example.test"
+}

@@ -4,6 +4,7 @@ import { buildServer } from "./app.mjs";
 import { localMailer } from "./mail.mjs";
 import { digest } from "./security.mjs";
 import { openPostgres } from "./postgres.mjs";
+import { createTelemetry, writeTelemetry } from "./telemetry.mjs";
 process.umask(0o077);
 const state = resolve(process.env.STATE_DIR || ".state");
 await mkdir(state, { recursive: true, mode: 0o700 });
@@ -15,6 +16,7 @@ const key = await readFile(keyPath);
 if (key.length !== 32) throw new Error("Vault key must contain 32 bytes");
 const publicOrigin = process.env.PUBLIC_ORIGIN || "http://127.0.0.1:8765";
 const port = Number(process.env.PORT || 8765);
+const telemetry = createTelemetry();
 if (![undefined, "0", "1"].includes(process.env.APACHE_CLIENT_IP))
   throw new Error("Invalid APACHE_CLIENT_IP configuration");
 let bootstrapHash;
@@ -57,6 +59,7 @@ if (
   throw new Error("Database migration required");
 const app = await buildServer({
   database,
+  telemetry,
   customerDatabase,
   customerRoot: resolve(dirname(new URL(import.meta.url).pathname), "../dist"),
   deletionJournal: async (record) => {
@@ -80,9 +83,24 @@ const app = await buildServer({
   staticRoot: resolve(dirname(new URL(import.meta.url).pathname), "../dist"),
 });
 await app.listen({ host: "127.0.0.1", port });
+await writeTelemetry(state, telemetry);
+let writingMetrics = false;
+const metricsTimer = setInterval(async () => {
+  if (writingMetrics) return;
+  writingMetrics = true;
+  try {
+    await writeTelemetry(state, telemetry);
+  } catch {
+    console.error("Operational metrics write failed.");
+  } finally {
+    writingMetrics = false;
+  }
+}, 30000);
+metricsTimer.unref();
 console.log("Customer and administrator service is listening on loopback.");
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, async () => {
+    clearInterval(metricsTimer);
     await app.close();
     process.exit(0);
   });

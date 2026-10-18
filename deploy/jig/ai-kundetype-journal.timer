@@ -1,0 +1,9 @@
+[Unit]
+Description=Independent encrypted deletion-record snapshot
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=15s
+Unit=ai-kundetype-job@journal.service
+[Install]
+WantedBy=timers.target

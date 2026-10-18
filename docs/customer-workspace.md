@@ -55,6 +55,10 @@ Creation retries reuse the customer's request identifier. Message writes lock th
 
 Admins have **Usage & costs** for assigned response allowances and a separate OpenAI organisation reporting connection. The owner will enter that reporting key through the secure backoffice later. Organisation spending includes Platform tests and other tools; individual app tokens/costs remain unmeasured while live AI and accounting are disabled. [Reporting sources, permissions and recovery](usage-and-costs.md).
 
+## Automated operations
+
+Follow [the current backup, monitoring and incident runbook](operations.md). Hourly encrypted PostgreSQL/vault snapshots and five-minute cumulative deletion-journal snapshots use the attached server volume; weekly restores use synthetic data only. Production backup helpers honor an explicit/configured `VAULT_KEY_FILE` instead of silently copying a different default key. The operator must stage that key/journal into a private accessible directory; application state remains inaccessible to the backup account. These copies are separate-volume, not off-server. External outage alerts and recovery-key handover remain separate acceptance work.
+
 ## PostgreSQL and migration
 
 Production uses PostgreSQL **18**, schema **8**, Node **24.22**, and the existing single Fastify service. SQLite remains only for legacy tests and an explicit one-time import. Startup requires `CONTROL_DATABASE_URL` and `CHAT_DATABASE_URL`, checks the runtime roles/schema and fails closed; it never opens SQLite as a fallback.
@@ -90,7 +94,7 @@ MIGRATION_DATABASE_URL='<operator connection to empty isolated target>' \
   node server/restore.mjs /private/backup /private/latest/deletions.jsonl
 ```
 
-The restore verifies checksums, restores schema/data, merges tombstones, removes deleted conversations/messages, verifies removal and revokes all sessions before returning success. It writes the merged journal next to the supplied input as `<journal>.replayed` (0600); copy that merged file into runtime state when activating the restored database. It refuses a missing journal or an existing application database. Restore the vault and merged/latest journal into private runtime state before enabling traffic. Keep later independent journal entries when restoring an older snapshot. Do not enable the restored application if any step fails. Offsite scheduling, journal retention/loss recovery, monitoring and recovery objectives still need the separate operational release work; this batch does not promise immediate erasure from historical backup media.
+The restore verifies checksums, restores schema/data, merges tombstones, removes deleted conversations/messages, verifies removal and revokes all sessions before returning success. It writes the merged journal next to the supplied input as `<journal>.replayed` (0600); copy that merged file into runtime state when activating the restored database. It refuses a missing journal or an existing application database. Restore the vault and merged/latest journal into private runtime state before enabling traffic. Keep later independent journal entries when restoring an older snapshot. Do not enable the restored application if any step fails. See [operations](operations.md) for the attached-volume schedule, retention, monitoring, recovery targets and remaining off-server/journal-loss requirements. This does not promise immediate erasure from historical backup media.
 
 ## Verification
 

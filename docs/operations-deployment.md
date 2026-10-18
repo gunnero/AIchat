@@ -1,0 +1,24 @@
+# Operational release — 18 October 2026
+
+[Draft PR #75](https://github.com/gunnero/AIchat/pull/75) is stacked on the customer workspace PR #72. No branch was merged. Related tasks #50, #51 and #56 remain open for their wider requirements.
+
+The compatible application release is `72dd8bd1fc00cdd469c67d9febbe522dd925d9ac`; the operational job release is `45045b577188bacd4400b9884029c825f020d911`. Application code is unchanged between these commits; the operational follow-up starts restricted workers directly through systemd. Both releases passed all matching CI checks before activation. Latest operational checks: [backoffice push](https://github.com/gunnero/AIchat/actions/runs/39162714510), [backoffice PR](https://github.com/gunnero/AIchat/actions/runs/39162718159), [app push](https://github.com/gunnero/AIchat/actions/runs/39162714560), [app PR](https://github.com/gunnero/AIchat/actions/runs/39162718149).
+
+## Verified production state
+
+- Executed from Aleksandar's developer Mac over the existing pinned Mac → web01 relay → jig SSH route. Root performed scoped service/configuration work; `igurl` prepared dependencies, `ai-migrate` created cutover checkpoints, and dedicated restricted workers perform backups and synthetic drills. No SSH enrollment, DNS, mail, TLS, unrelated vhost or unrelated volume-file changes were made.
+- `/opt/ai-kundetypeassistent/current` points to the application release; `/opt/ai-kundetype-operations/current` points to the operational release. PostgreSQL remains version 18/schema 8 on its private Unix socket. No schema migration, account changes or session invalidation was needed; customer writes were preserved.
+- Four scheduled timers are enabled and active: hourly full encrypted backup, five-minute cumulative deletion snapshot, weekly synthetic recovery drill and one-minute monitoring. All initial job statuses passed; monitoring observed no failing checks.
+- Four age-encrypted archives existed at verification, all with matching SHA-256/size receipts and root-only 0600 permissions in the dedicated 0700 volume directory. This is a point-in-time count, not a retention target. Backup writes verified the intended filesystem UUID. Existing unrelated disk contents were untouched.
+- The first full production backup passed, and the synthetic restore verified surviving encrypted content, later deletion including child messages, password/MFA preservation, protected Admin rules and session revocation. Synthetic drill databases were reset and plaintext staging removed. Real customer backups were not decrypted into development, staging or the operator's Mac.
+- The actual server age binary encrypted a synthetic known-plaintext challenge that the separately held Mac recovery identity successfully decrypted. The production recovery identity was not transferred to jig or the volume. Key custody and a second secured copy still require handover.
+- The selected recipient confirmed receiving the labelled operational TEST email after iCloud accepted it. A later fake-mail probe verified restricted-worker stdin/metadata handling without sending another email. Failure/debounce/retry/recovery behavior is covered by synthetic tests.
+- The backup role was verified SELECT-only with no owner membership; both runtime roles retained no owner/backup membership, no superuser/RLS bypass and forced policies on private tables. Public requests could not fetch operational code, metrics, configuration, vault or authenticated APIs. Trusted HTTPS verified all 17 served asset hashes, cache/no-store rules, CSP, canonical routes and the current application revision.
+
+Local/CI validation includes 81 backend/catalog cases, 76 UI cases, nine operational safety/encryption cases, builds, runtime audits and a synthetic encrypted PostgreSQL restore rehearsal. No fixture email or OpenAI request was sent.
+
+## Recovery checkpoints and limitations
+
+Fresh encrypted pre-deployment and stopped-app cutover checkpoints are retained under `/var/lib/ai-kundetype-migration/72dd8bd1fc00cdd469c67d9febbe522dd925d9ac/`; their plaintext working copies were staged only in `/run` and removed. Initial configuration/HBA/ident snapshots are under `/root/123url-config-backups/ai-operations-72dd8bd1fc00cdd469c67d9febbe522dd925d9ac/`. The scoped job-unit follow-up checkpoint is under `/root/123url-config-backups/ai-operations-followup-45045b577188bacd4400b9884029c825f020d911/`. None is a reason to rewind current PostgreSQL writes.
+
+The attached Hetzner volume is on the same server. Independent off-server encrypted copies, external whole-host/network outage detection, key-custody handover, full-scale recovery-time measurement, legal retention and broader privacy/incident handover remain open acceptance items. Historical manual checkpoints also need a separate retention review. Follow [the operational runbook](operations.md) for recovery targets, restoration, triage and scoped rollback.
