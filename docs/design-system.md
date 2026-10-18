@@ -1,19 +1,22 @@
 # Option 1 design system
 
-Source: assets/ai-kundetypeassistent-selected-concept.png (1487 × 1058). The supplied logo is used as a real image, circularly framed; it is not redrawn. The original source is small, so a higher-resolution logo remains a polish opportunity.
+Layout source: assets/ai-kundetypeassistent-selected-concept.png (1487 × 1058). On 18 October 2026, the client approved the project and requested black and white. This palette supersedes the source image's green, cream and sage; layout and typography remain as approved. The supplied logo is circularly framed and displayed with CSS grayscale; its original file is preserved. The original source is small, so a higher-resolution logo remains a polish opportunity.
 
 ## Tokens
 
 | Token | Value | Use |
 | --- | --- | --- |
-| Evergreen | #23443e | Sidebar and primary actions |
-| Cream | #f4f1e9 | Workspace |
-| Sage | #d5deca | Customer message bubbles |
-| Sage strong | #8eb983 | Allowance progress |
-| Ink | #1d2e37 | Main text |
-| Muted | #5f6669 | Secondary copy |
-| Paper | #faf9f5 | Composer, forms and dialogs |
-| Line | #d7d7cc | Dividers |
+| Primary | #000000 | Sidebar and primary actions |
+| Workspace | #ffffff | Workspace |
+| Bubble | #f0f0f0 | Customer message bubbles |
+| Progress fill | #eeeeee / #000000 | Light on sidebar; black in usage dialog |
+| Ink | #171717 | Main text and explicit error copy |
+| Muted | #626262 | Secondary copy |
+| Paper | #ffffff | Composer, forms and dialogs |
+| Line | #d6d6d6 | Non-interactive dividers |
+| Control border | #858585 | Forms, composer and secondary controls |
+
+All states use neutral grays, including hover, selected, disabled, status pills, notifications, backdrops and shadows. Active/invited/suspended statuses retain their text labels. Keyboard focus uses a dark ring on light surfaces and a white ring on the sidebar/mobile header; checkboxes and radio controls use a black accent.
 
 Source Sans 3 is self-hosted, with regular 400, semibold 600 and bold 700. Phosphor light/regular icons match the outline style. UI initials are actual text, as in the mockup.
 
@@ -25,14 +28,16 @@ WCAG relative-luminance calculation on the actual solid tokens:
 
 | Text / background | Ratio |
 | --- | --- |
-| Ink / cream | 12.42:1 |
-| Muted / cream | 5.18:1 |
-| Sidebar white #f5f7f1 / evergreen | 9.89:1 |
-| Sidebar secondary #c2d2c7 / evergreen | 6.78:1 |
-| Ink / sage | 10.10:1 |
-| Evergreen / paper | 10.13:1 |
+| Ink / white | 17.93:1 |
+| Muted / white | 6.10:1 |
+| Sidebar white / black | 21.00:1 |
+| Sidebar secondary #c7c7c7 / black | 12.42:1 |
+| Ink / message bubble | 15.73:1 |
+| Placeholder #737373 / composer | 4.74:1 |
+| Notice text #383838 / #f0f0f0 | 10.29:1 |
+| Control border / white | 3.69:1 |
 
-These principal text pairs exceed 4.5:1. This calculation is not a complete accessibility certification.
+These principal text pairs exceed 4.5:1; control boundaries exceed 3:1. This calculation is not a complete accessibility certification.
 
 ## Components and states
 

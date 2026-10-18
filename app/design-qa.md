@@ -1,5 +1,18 @@
 # Design QA — option 1 prototype
 
+## Approved monochrome revision — 18 October 2026
+
+The client approved the project with one change: black-and-white colors. This replaces the original palette; the historical comparison below documents the earlier layout implementation.
+
+- Replaced chromatic colors across customer/admin views, sharing, usage, feedback, hover/selected/disabled states, overlays and focus indicators. The supplied logo displays in grayscale; its original file is preserved.
+- Kept the existing layout, typography, content and interaction logic. Status meanings remain explicit in text, independent of color.
+- Reviewed [desktop](../docs/screenshots/monochrome-desktop.png), [sharing with keyboard focus](../docs/screenshots/monochrome-share.png), [admin](../docs/screenshots/monochrome-admin.png) and [mobile](../docs/screenshots/monochrome-mobile.png). The usage dialog's progress fill is black on a light track; sidebar progress stays light on a dark track.
+- Principal text contrast is at least 4.74:1; control border/white contrast is 3.69:1. See the updated design-system table.
+- Lint, typecheck and the existing 14 behavior tests passed. No new tests are needed for this palette-only change.
+- Desktop (1487 × 1058) and mobile (390 × 844) rendered without horizontal page overflow. Sharing checkbox keyboard focus remained visible; the browser reported no console warnings/errors.
+
+## Original option 1 verification — 16 October 2026
+
 Date: 16 October 2026. final result: passed
 
 ## Evidence and matching state
