@@ -2,6 +2,8 @@
 
 This runbook covers the current Node 24.22 / PostgreSQL 18 / schema 8 application on jig. It supersedes historical SQLite backup instructions. Related work: [AK-049](https://github.com/gunnero/AIchat/issues/50), [AK-050](https://github.com/gunnero/AIchat/issues/51), [AK-055](https://github.com/gunnero/AIchat/issues/56).
 
+See [verified release and deployment evidence](operations-deployment.md).
+
 ## Scope and responsibilities
 
 The attached Hetzner volume is a separate disk on the same server. It is **not off-server disaster recovery**. Server loss, compromised root access or loss of that volume can still destroy the live data and its copies. Add an independently controlled encrypted off-server copy before declaring disaster recovery ready. Host-local monitoring also cannot notify if the whole server or network is down; add an independent external checker. Do not describe either acceptance item as completed.
