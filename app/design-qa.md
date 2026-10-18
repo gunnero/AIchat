@@ -1,5 +1,15 @@
 # Design QA — option 1 prototype
 
+## Project and prompt assignments — 18 October 2026
+
+- Added a customer project selector and assigned prompt/version context while retaining the approved monochrome layout. [Customer workspace](../docs/screenshots/projects-customer.png).
+- Added [customer assignment controls](../docs/screenshots/project-assignments.png) and a [project/prompt catalogue](../docs/screenshots/projects-admin.png). Account fields and assignment controls use two columns on desktop and one on mobile.
+- Checked switching between green/Helle and yellow/Aleksandar; each showed its own history. Assigning TESTAI made it available. Changing green to Aleksandar preserved the old Helle chat as read-only; a new chat displayed the assigned prepared reply.
+- Checked [mobile project selection with keyboard focus](../docs/screenshots/projects-mobile-menu.png), [mobile chat](../docs/screenshots/projects-mobile.png), and [mobile project administration](../docs/screenshots/projects-mobile-admin.png). The focus trap includes the native project selector and returns focus to the opener after selection.
+- Fixed a mobile table overflow: the absolutely positioned hidden action-column heading now has a positioned scroll container. The document width matches the 390px viewport while the table can scroll inside its panel.
+- All 25 behavior tests passed, including owner/project history filtering, invalid/cross-project prompt references, pinned versions, grant/revocation, zero assignments, catalogue creation and new-version publication. These are prototype checks; real authenticated API/database isolation is AK-060/062.
+- Browser console warnings/errors were empty. Provider synchronization, actual instructions and live AI behavior remain unimplemented. [Scope and migration details](../docs/projects-and-prompts.md).
+
 ## Approved monochrome revision — 18 October 2026
 
 The client approved the project with one change: black-and-white colors. This replaces the original palette; the historical comparison below documents the earlier layout implementation.

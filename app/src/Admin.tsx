@@ -9,6 +9,14 @@ import {
 } from "@phosphor-icons/react";
 import { Modal } from "./Modal";
 import { MessageText } from "./MessageText";
+import { ProjectsAdmin } from "./ProjectsAdmin";
+import {
+  promptKey,
+  validateAssignments,
+  type AssistantProject,
+  type ProjectAssignment,
+  type PromptVersion,
+} from "./projects";
 import {
   adminCustomerRows,
   validateInvitation,
@@ -26,6 +34,12 @@ export function Admin({
   setCustomers,
   plans,
   setPlans,
+  projects,
+  setProjects,
+  prompts,
+  setPrompts,
+  assignments,
+  setAssignments,
   shares,
   onBack,
   notify,
@@ -35,6 +49,12 @@ export function Admin({
   setCustomers: Dispatch<SetStateAction<Customer[]>>;
   plans: Plan[];
   setPlans: Dispatch<SetStateAction<Plan[]>>;
+  projects: AssistantProject[];
+  setProjects: Dispatch<SetStateAction<AssistantProject[]>>;
+  prompts: PromptVersion[];
+  setPrompts: Dispatch<SetStateAction<PromptVersion[]>>;
+  assignments: ProjectAssignment[];
+  setAssignments: Dispatch<SetStateAction<ProjectAssignment[]>>;
   shares: Share[];
   onBack: () => void;
   notify: (text: string) => void;
@@ -66,16 +86,20 @@ export function Admin({
         <h2>
           {tab === "customers"
             ? "Menneskene bag samtalerne"
-            : tab === "plans"
-              ? "En pakke til hvert behov"
-              : "Kun det, kunden har valgt at dele"}
+            : tab === "projects"
+              ? "Den rette assistent til hver kunde"
+              : tab === "plans"
+                ? "En pakke til hvert behov"
+                : "Kun det, kunden har valgt at dele"}
         </h2>
         <p className="muted">
           {tab === "customers"
             ? "Administrér adgang og forbrug. Kundernes private samtaler vises ikke her."
-            : tab === "plans"
-              ? "Afprøv pakker og svargrænser. Alle priser er illustrative; betaling foregår eksternt."
-              : "Her vises faste kopier af de beskeder, en kunde har delt med Helle."}
+            : tab === "projects"
+              ? "Administrér projekter og promptversioner. Tildel derefter projekter og en bestemt prompt til hver kunde."
+              : tab === "plans"
+                ? "Afprøv pakker og svargrænser. Alle priser er illustrative; betaling foregår eksternt."
+                : "Her vises faste kopier af de beskeder, en kunde har delt med Helle."}
         </p>
         {tab === "customers" && (
           <>
@@ -121,6 +145,7 @@ export function Admin({
                   <tr>
                     <th>Kunde</th>
                     <th>Pakke</th>
+                    <th>Projekter</th>
                     <th>Adgang</th>
                     <th>Forbrug</th>
                     <th>
@@ -129,33 +154,42 @@ export function Admin({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((c) => (
-                    <tr key={c.id}>
-                      <td>
-                        <strong>{c.name}</strong>
-                        <span className="table-email">{c.email}</span>
-                      </td>
-                      <td>{plans.find((p) => p.id === c.planId)?.name}</td>
-                      <td>
-                        <span className={"pill " + c.status}>
-                          {statusLabel(c.status)}
-                        </span>
-                      </td>
-                      <td>
-                        {c.used} /{" "}
-                        {plans.find((p) => p.id === c.planId)?.allowance}
-                      </td>
-                      <td>
-                        <button
-                          className="text-button"
-                          onClick={() => setEditing(c)}
-                          aria-label={"Administrér " + c.name}
-                        >
-                          Administrér
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((c) => {
+                    const projectCount = assignments.filter(
+                      (a) => a.customerId === c.id,
+                    ).length;
+                    return (
+                      <tr key={c.id}>
+                        <td>
+                          <strong>{c.name}</strong>
+                          <span className="table-email">{c.email}</span>
+                        </td>
+                        <td>{plans.find((p) => p.id === c.planId)?.name}</td>
+                        <td>
+                          {projectCount}{" "}
+                          {projectCount === 1 ? "projekt" : "projekter"}
+                        </td>
+                        <td>
+                          <span className={"pill " + c.status}>
+                            {statusLabel(c.status)}
+                          </span>
+                        </td>
+                        <td>
+                          {c.used} /{" "}
+                          {plans.find((p) => p.id === c.planId)?.allowance}
+                        </td>
+                        <td>
+                          <button
+                            className="text-button"
+                            onClick={() => setEditing(c)}
+                            aria-label={"Administrér " + c.name}
+                          >
+                            Administrér
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               {!rows.length && (
@@ -167,6 +201,16 @@ export function Admin({
               opretter ingen rigtige konti.
             </p>
           </>
+        )}
+        {tab === "projects" && (
+          <ProjectsAdmin
+            projects={projects}
+            setProjects={setProjects}
+            prompts={prompts}
+            setPrompts={setPrompts}
+            assignments={assignments}
+            notify={notify}
+          />
         )}
         {tab === "plans" && (
           <div className="plans-grid">
@@ -206,7 +250,12 @@ export function Admin({
                   <span>
                     <strong>{s.title}</strong>
                     <small>
-                      Sofie Jensen · {s.messages.length}{" "}
+                      {customers.find((c) => c.id === s.customerId)?.name ??
+                        "Kunde"}{" "}
+                      ·{" "}
+                      {projects.find((p) => p.id === s.projectId)?.name ??
+                        "Projekt"}{" "}
+                      · {s.messages.length}{" "}
                       {s.messages.length === 1 ? "besked" : "beskeder"} · fast
                       kopi
                     </small>
@@ -223,13 +272,20 @@ export function Admin({
           customer={editing}
           customers={customers}
           plans={plans}
+          projects={projects}
+          prompts={prompts}
+          assignments={assignments}
           onClose={() => setEditing(null)}
-          onSave={(customer) => {
+          onSave={(customer, customerAssignments) => {
             setCustomers((previous) =>
               editing === "invite"
                 ? [...previous, customer]
                 : previous.map((c) => (c.id === customer.id ? customer : c)),
             );
+            setAssignments((previous) => [
+              ...previous.filter((a) => a.customerId !== customer.id),
+              ...customerAssignments,
+            ]);
             notify(
               editing === "invite"
                 ? "Demoinvitation oprettet. Ingen e-mail er sendt."
@@ -259,13 +315,19 @@ export function Admin({
           onClose={() => setOpenedShare(null)}
         >
           <p className="notice">
-            Delt af Sofie Jensen. Denne kopi indeholder kun de valgte beskeder.
+            Delt af{" "}
+            {customers.find((c) => c.id === currentShare.customerId)?.name ??
+              "kunden"}{" "}
+            i{" "}
+            {projects.find((p) => p.id === currentShare.projectId)?.name ??
+              "projektet"}
+            . Denne kopi indeholder kun de valgte beskeder.
           </p>
           <div className="snapshot-messages">
             {currentShare.messages.map((m) => (
               <article key={m.id}>
                 <span className="eyebrow">
-                  {m.role === "user" ? "SOFIE" : "ASSISTENT"}
+                  {m.role === "user" ? "KUNDE" : "ASSISTENT"}
                 </span>
                 <MessageText content={m.content} />
               </article>
@@ -287,14 +349,20 @@ function CustomerEditor({
   customer,
   customers,
   plans,
+  projects,
+  prompts,
+  assignments,
   onClose,
   onSave,
 }: {
   customer: Customer | "invite";
   customers: Customer[];
   plans: Plan[];
+  projects: AssistantProject[];
+  prompts: PromptVersion[];
+  assignments: ProjectAssignment[];
   onClose: () => void;
-  onSave: (customer: Customer) => void;
+  onSave: (customer: Customer, assignments: ProjectAssignment[]) => void;
 }) {
   const isNew = customer === "invite";
   const [name, setName] = useState(isNew ? "" : customer.name);
@@ -307,17 +375,25 @@ function CustomerEditor({
     isNew ? "2026-11-16" : customer.expires,
   );
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      assignments
+        .filter((a) => !isNew && a.customerId === customer.id)
+        .map((a) => [a.projectId, `${a.promptId}:${a.promptVersion}`]),
+    ),
+  );
   return (
     <Modal
       title={isNew ? "Invitér en kunde" : "Administrér " + customer.name}
       onClose={onClose}
+      wide
     >
       <p className="muted">
         Demo med fiktive oplysninger. Ingen e-mail eller loginoplysninger bliver
         sendt.
       </p>
       <form
-        className="form-stack"
+        className="form-stack customer-editor"
         onSubmit={(event) => {
           event.preventDefault();
           const invalid = isNew ? validateInvitation(email, customers) : null;
@@ -329,71 +405,169 @@ function CustomerEditor({
             setError("Skriv kundens navn.");
             return;
           }
-          onSave({
-            id: isNew ? crypto.randomUUID() : customer.id,
-            name: name.trim(),
-            email: email.trim().toLowerCase(),
-            planId,
-            status,
-            expires,
-            used: isNew ? 0 : customer.used,
-          });
+          const customerId = isNew ? crypto.randomUUID() : customer.id;
+          const customerAssignments: ProjectAssignment[] = [];
+          for (const [projectId, key] of Object.entries(selected)) {
+            const prompt = prompts.find(
+              (p) => p.projectId === projectId && promptKey(p) === key,
+            );
+            if (!prompt)
+              return setError(
+                "Vælg en gyldig prompt til hvert tildelt projekt.",
+              );
+            customerAssignments.push({
+              customerId,
+              projectId,
+              promptId: prompt.id,
+              promptVersion: prompt.version,
+            });
+          }
+          const invalidAssignments = validateAssignments(
+            customerId,
+            customerAssignments,
+            projects,
+            prompts,
+          );
+          if (invalidAssignments) return setError(invalidAssignments);
+          onSave(
+            {
+              id: customerId,
+              name: name.trim(),
+              email: email.trim().toLowerCase(),
+              planId,
+              status,
+              expires,
+              used: isNew ? 0 : customer.used,
+            },
+            customerAssignments,
+          );
         }}
       >
-        <label>
-          Navn
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={100}
-            required
-            autoFocus
-          />
-        </label>
-        <label>
-          E-mail
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            maxLength={254}
-            required
-            disabled={!isNew}
-            placeholder="kunde@example.test"
-          />
-        </label>
-        <label>
-          Pakke
-          <select value={planId} onChange={(e) => setPlanId(e.target.value)}>
-            {plans.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} · {p.allowance} svar
-              </option>
-            ))}
-          </select>
-        </label>
-        {!isNew && (
+        <div className="customer-account-fields">
           <label>
-            Adgang
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as Customer["status"])}
-            >
-              <option value="active">Aktiv</option>
-              <option value="invited">Inviteret</option>
-              <option value="suspended">Sat på pause</option>
+            Navn
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={100}
+              required
+              autoFocus
+            />
+          </label>
+          <label>
+            E-mail
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              maxLength={254}
+              required
+              disabled={!isNew}
+              placeholder="kunde@example.test"
+            />
+          </label>
+          <label>
+            Pakke
+            <select value={planId} onChange={(e) => setPlanId(e.target.value)}>
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} · {p.allowance} svar
+                </option>
+              ))}
             </select>
           </label>
-        )}
-        <label>
-          Adgang til
-          <input
-            type="date"
-            value={expires}
-            onChange={(e) => setExpires(e.target.value)}
-            required
-          />
-        </label>
+          {!isNew && (
+            <label>
+              Adgang
+              <select
+                value={status}
+                onChange={(e) =>
+                  setStatus(e.target.value as Customer["status"])
+                }
+              >
+                <option value="active">Aktiv</option>
+                <option value="invited">Inviteret</option>
+                <option value="suspended">Sat på pause</option>
+              </select>
+            </label>
+          )}
+          <label>
+            Adgang til
+            <input
+              type="date"
+              value={expires}
+              onChange={(e) => setExpires(e.target.value)}
+              required
+            />
+          </label>
+        </div>
+        <fieldset className="assignment-list">
+          <legend>Projekter og prompter</legend>
+          <p className="muted">
+            Vælg flere projekter og én promptversion i hvert projekt. Uden en
+            tildeling har kunden ingen projektadgang.
+          </p>
+          {projects.map((project) => {
+            const options = prompts.filter((p) => p.projectId === project.id);
+            return (
+              <div className="assignment-row" key={project.id}>
+                <label className="inline-check">
+                  <input
+                    type="checkbox"
+                    aria-label={`Adgang til ${project.name}`}
+                    checked={project.id in selected}
+                    disabled={!options.length}
+                    onChange={(event) =>
+                      setSelected((previous) => {
+                        if (event.target.checked)
+                          return {
+                            ...previous,
+                            [project.id]: promptKey(options[0]),
+                          };
+                        const next = { ...previous };
+                        delete next[project.id];
+                        return next;
+                      })
+                    }
+                  />
+                  <span>
+                    {project.name}
+                    {project.enabled ? "" : " · på pause"}
+                  </span>
+                </label>
+                {project.id in selected && (
+                  <label>
+                    Prompt til {project.name}
+                    <select
+                      aria-label={`Prompt til ${project.name}`}
+                      value={selected[project.id]}
+                      onChange={(event) =>
+                        setSelected((previous) => ({
+                          ...previous,
+                          [project.id]: event.target.value,
+                        }))
+                      }
+                    >
+                      {options.map((prompt) => (
+                        <option
+                          key={promptKey(prompt)}
+                          value={promptKey(prompt)}
+                        >
+                          {prompt.name} · v{prompt.version}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {!options.length && (
+                  <small className="muted">
+                    Tilføj først en prompt til projektet.
+                  </small>
+                )}
+              </div>
+            );
+          })}
+        </fieldset>
         {error && (
           <p className="error-text" role="alert">
             {error}

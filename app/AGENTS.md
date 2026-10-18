@@ -11,3 +11,7 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 ## Approved design update — 18 October 2026
 
 The client approved the project and requested a black-and-white palette. This supersedes the green/cream/sage colors in the original option 1 image. Keep the approved layout, typography and interactions. Use black, white and neutral grays throughout customer/admin screens, dialogs, status/feedback and focus states. Display the supplied logo in grayscale without replacing the original asset. Preserve readable contrast and explicit status labels.
+
+## Project and prompt assignments — 18 October 2026
+
+Customers can have multiple assigned projects and one specific prompt version per project. Assignments are administered in this app; Platform-created configuration is the intended source for a later server-side import/integration. Customers choose only among their assigned projects. Histories remain private per customer/project, and new chats pin their assigned prompt version. Preserve the monochrome layout. Catalogue names such as green/yellow do not change the theme. This batch remains a synthetic demo; never embed live prompts, credentials or customer data in the frontend. See `../docs/projects-and-prompts.md` for the provider migration constraint and production boundaries.

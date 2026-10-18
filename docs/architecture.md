@@ -2,6 +2,8 @@
 
 Status: accepted for the first prototype batch; supplier provisioning and production controls remain separate tasks. Date: 16 October 2026.
 
+Updated 18 October 2026: [projects and prompts](projects-and-prompts.md) adds multiple projects per customer, a specific prompt version per assignment, private customer/project history and an OpenAI source-import/migration plan. The demo implements these interactions in memory; the server/database controls remain planned.
+
 ## Decision
 
 Use React/TypeScript for the web client, Vite for development and bundling, locally served Source Sans 3, and Phosphor's light/regular outline icons. Option 1 is the visual target. No browser-side OpenAI SDK, remote fonts or database credentials.

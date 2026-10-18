@@ -17,6 +17,7 @@ import {
   ChartBarIcon,
   UsersIcon,
   InfoIcon,
+  FoldersIcon,
 } from "@phosphor-icons/react";
 import { Admin } from "./Admin";
 import { adminTabs, type AdminTab } from "./adminNavigation";
@@ -34,6 +35,15 @@ import {
   type Share,
   type Scenario,
 } from "./domain";
+import {
+  assignedProjects,
+  canContinueChat,
+  createDemoAssignments,
+  createDemoProjects,
+  createDemoPrompts,
+  createProjectChat,
+  projectChats,
+} from "./projects";
 
 type Dialog = "share" | "usage" | "demo" | "attachment" | "info" | null;
 const scenarios: { id: Scenario; label: string; detail: string }[] = [
@@ -61,7 +71,14 @@ const scenarios: { id: Scenario; label: string; detail: string }[] = [
 
 export function App() {
   const [chats, setChats] = useState(createDemoChats);
-  const [activeId, setActiveId] = useState("welcome");
+  const [selectedProjectId, setSelectedProjectId] = useState("green");
+  const [activeIds, setActiveIds] = useState<Record<string, string>>({
+    green: "welcome",
+    yellow: "yellow-plan",
+  });
+  const [projects, setProjects] = useState(createDemoProjects);
+  const [prompts, setPrompts] = useState(createDemoPrompts);
+  const [assignments, setAssignments] = useState(createDemoAssignments);
   const [customers, setCustomers] = useState(createDemoCustomers);
   const [plans, setPlans] = useState(createDemoPlans);
   const [shares, setShares] = useState<Share[]>([]);
@@ -83,8 +100,37 @@ export function App() {
   const profileRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const mobileMenuButton = useRef<HTMLButtonElement>(null);
-  const active = chats.find((c) => c.id === activeId)!;
   const customer = customers.find((c) => c.id === "sofie")!;
+  const customerProjects = assignedProjects(
+    customer.id,
+    projects,
+    prompts,
+    assignments,
+  );
+  const activeProject =
+    customerProjects.find((p) => p.project.id === selectedProjectId) ??
+    customerProjects[0];
+  const scopedChats = activeProject
+    ? projectChats(chats, customer.id, activeProject.project.id)
+    : [];
+  const active =
+    scopedChats.find(
+      (c) => c.id === activeIds[activeProject?.project.id ?? ""],
+    ) ?? scopedChats[0];
+  const activeId = active?.id ?? "";
+  const pinnedPrompt =
+    active &&
+    prompts.find(
+      (p) =>
+        p.projectId === active.projectId &&
+        p.id === active.promptId &&
+        p.version === active.promptVersion,
+    );
+  const promptChanged = !!(
+    active &&
+    activeProject &&
+    !canContinueChat(active, customer.id, activeProject)
+  );
   const plan = plans.find((p) => p.id === customer.planId)!;
   const remaining =
     scenario === "exhausted" ? 0 : Math.max(0, plan.allowance - customer.used);
@@ -150,20 +196,37 @@ export function App() {
   }, [profileOpen]);
 
   function changeChat(id: string) {
-    setActiveId(id);
+    if (!activeProject || !scopedChats.some((c) => c.id === id)) return;
+    setActiveIds((previous) => ({
+      ...previous,
+      [activeProject.project.id]: id,
+    }));
     setError("");
     setMobileNav(false);
     if (scrollArea.current) scrollArea.current.scrollTop = 0;
   }
   function newChat() {
-    const chat: Chat = {
-      id: crypto.randomUUID(),
-      title: "Ny samtale",
-      messages: [],
-    };
+    if (!activeProject || busy) return;
+    const chat: Chat = createProjectChat(
+      customer.id,
+      activeProject,
+      crypto.randomUUID(),
+    );
     setChats((previous) => [chat, ...previous]);
-    changeChat(chat.id);
+    setActiveIds((previous) => ({
+      ...previous,
+      [activeProject.project.id]: chat.id,
+    }));
+    setError("");
+    setMobileNav(false);
     requestAnimationFrame(() => composer.current?.focus());
+  }
+  function changeProject(id: string) {
+    if (busy || !customerProjects.some((p) => p.project.id === id)) return;
+    setSelectedProjectId(id);
+    setError("");
+    setMobileNav(false);
+    if (scrollArea.current) scrollArea.current.scrollTop = 0;
   }
   function updateAssistant(
     chatId: string,
@@ -188,7 +251,15 @@ export function App() {
   }
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (!draft.trim() || controller.current || remaining <= 0 || accessPaused)
+    if (
+      !active ||
+      !activeProject ||
+      !canContinueChat(active, customer.id, activeProject) ||
+      !draft.trim() ||
+      controller.current ||
+      remaining <= 0 ||
+      accessPaused
+    )
       return;
     const prompt = draft.trim();
     const chatId = activeId;
@@ -230,6 +301,7 @@ export function App() {
         prompt,
         scenario,
         requestController.signal,
+        activeProject.prompt.demoReply,
       )) {
         content += chunk;
         updateAssistant(chatId, messageId, content, "streaming");
@@ -333,8 +405,8 @@ export function App() {
           }
           if (event.key !== "Tab") return;
           const buttons = Array.from(
-            sidebarRef.current?.querySelectorAll<HTMLButtonElement>(
-              "button:not(:disabled)",
+            sidebarRef.current?.querySelectorAll<HTMLElement>(
+              "button:not(:disabled), select:not(:disabled)",
             ) ?? [],
           ).filter((button) => button.offsetParent !== null);
           const first = buttons[0];
@@ -361,14 +433,43 @@ export function App() {
         </div>
         {view === "customer" ? (
           <>
-            <button className="new-chat" onClick={newChat} disabled={busy}>
+            <div className="project-picker">
+              <label htmlFor="customer-project">Dit projekt</label>
+              <select
+                id="customer-project"
+                aria-label="Vælg projekt"
+                value={activeProject?.project.id ?? ""}
+                disabled={busy || !customerProjects.length}
+                onChange={(event) => changeProject(event.target.value)}
+              >
+                {!customerProjects.length && (
+                  <option value="">Ingen projekter</option>
+                )}
+                {customerProjects.map(({ project }) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              {activeProject && (
+                <p>
+                  Tildelt prompt: {activeProject.prompt.name} · v
+                  {activeProject.prompt.version}
+                </p>
+              )}
+            </div>
+            <button
+              className="new-chat"
+              onClick={newChat}
+              disabled={busy || !activeProject}
+            >
               <PlusIcon size={27} weight="light" />
               Ny samtale
             </button>
             <nav className="conversation-nav" aria-label="Dine samtaler">
               <h2>Dine samtaler</h2>
               <div className="history-list">
-                {chats.map((chat) => (
+                {scopedChats.map((chat) => (
                   <button
                     key={chat.id}
                     className={
@@ -383,6 +484,13 @@ export function App() {
                   </button>
                 ))}
               </div>
+              {!scopedChats.length && (
+                <p className="history-empty">
+                  {activeProject
+                    ? "Ingen samtaler i dette projekt endnu."
+                    : "Kontakt Helle for at få projektadgang."}
+                </p>
+              )}
             </nav>
           </>
         ) : (
@@ -488,15 +596,53 @@ export function App() {
             setCustomers={setCustomers}
             plans={plans}
             setPlans={setPlans}
+            projects={projects}
+            setProjects={setProjects}
+            prompts={prompts}
+            setPrompts={setPrompts}
+            assignments={assignments}
+            setAssignments={setAssignments}
             shares={shares}
             onBack={() => switchView("customer")}
             notify={setToast}
           />
+        ) : !activeProject || !active ? (
+          <div className="project-empty">
+            <FoldersIcon size={48} weight="light" />
+            <h1>
+              {activeProject
+                ? activeProject.project.name
+                : "Ingen projekter tildelt endnu"}
+            </h1>
+            <p>
+              {activeProject
+                ? activeProject.project.description
+                : "Helle kan give dig adgang til et eller flere projekter."}
+            </p>
+            {activeProject && (
+              <>
+                <p className="muted">
+                  Din prompt: {activeProject.prompt.name} · v
+                  {activeProject.prompt.version}
+                </p>
+                <button className="button primary" onClick={newChat}>
+                  Start en samtale
+                </button>
+              </>
+            )}
+          </div>
         ) : (
           <>
             <header className="workspace-header">
               <div className="heading-group">
-                <h1>{active.title}</h1>
+                <div className="chat-heading">
+                  <p className="project-context">
+                    {activeProject.project.name} ·{" "}
+                    {pinnedPrompt?.name ?? "Tidligere prompt"} · v
+                    {active.promptVersion}
+                  </p>
+                  <h1>{active.title}</h1>
+                </div>
                 <span className="privacy-state">
                   <LockSimpleIcon size={21} weight="light" />
                   {sharedCount ? "Kopi delt" : "Privat"}
@@ -612,15 +758,22 @@ export function App() {
               )}
             </div>
             <footer className="composer-area">
-              {(error || !remaining || accessPaused) && (
+              {(error || !remaining || accessPaused || promptChanged) && (
                 <div className="composer-alert" role="alert">
                   <span>
                     {accessPaused
                       ? "Din demoadgang er sat på pause eller udløbet."
-                      : !remaining
-                        ? "Du har brugt dine svar. Kontakt Helle for at forny din pakke."
-                        : error}
+                      : promptChanged
+                        ? "Din prompttildeling er ændret. Start en ny samtale med den aktuelle prompt."
+                        : !remaining
+                          ? "Du har brugt dine svar. Kontakt Helle for at forny din pakke."
+                          : error}
                   </span>
+                  {promptChanged && (
+                    <button className="text-button" onClick={newChat}>
+                      Start ny samtale
+                    </button>
+                  )}
                   {!remaining && (
                     <button
                       className="text-button"
@@ -656,7 +809,7 @@ export function App() {
                   value={draft}
                   maxLength={4000}
                   rows={1}
-                  disabled={busy || !remaining || accessPaused}
+                  disabled={busy || !remaining || accessPaused || promptChanged}
                   onChange={(e) =>
                     setDrafts((previous) => ({
                       ...previous,
@@ -688,7 +841,12 @@ export function App() {
                     className="send-button"
                     type="submit"
                     aria-label="Send besked"
-                    disabled={!draft.trim() || !remaining || accessPaused}
+                    disabled={
+                      !draft.trim() ||
+                      !remaining ||
+                      accessPaused ||
+                      promptChanged
+                    }
                   >
                     <PaperPlaneTiltIcon size={27} weight="light" />
                   </button>
@@ -715,10 +873,13 @@ export function App() {
           </button>
         </div>
       )}
-      {dialog === "share" && (
+      {dialog === "share" && active && (
         <ShareDialog
           chat={active}
-          shares={shares}
+          shares={shares.filter(
+            (s) =>
+              s.customerId === customer.id && s.projectId === active.projectId,
+          )}
           onClose={() => setDialog(null)}
           onShare={(selected) =>
             setShares((previous) => [
@@ -819,9 +980,13 @@ export function App() {
                 setChats(createDemoChats());
                 setCustomers(createDemoCustomers());
                 setPlans(createDemoPlans());
+                setProjects(createDemoProjects());
+                setPrompts(createDemoPrompts());
+                setAssignments(createDemoAssignments());
                 setShares([]);
                 setDrafts({});
-                setActiveId("welcome");
+                setSelectedProjectId("green");
+                setActiveIds({ green: "welcome", yellow: "yellow-plan" });
                 setScenario("normal");
                 setError("");
                 setCopied("");

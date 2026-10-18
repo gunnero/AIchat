@@ -1,11 +1,12 @@
 # AI - Kundetypeassistent
 
-Planning baseline, 16 October 2026. Canonical task status lives in the [GitHub roadmap](https://github.com/gunnero/AIchat/issues/1) for `gunnero/AIchat`. The [local task index](TASKS.md) links to all 58 tasks.
+Planning baseline, 16 October 2026. Canonical task status lives in the [GitHub roadmap](https://github.com/gunnero/AIchat/issues/1) for `gunnero/AIchat`. The [local task index](TASKS.md) links to all 62 tasks.
 
 ## Agreed direction
 
 - Individual customer accounts; payment happens through an external service.
 - Helle invites customers, assigns a package and controls access and expiry.
+- Each customer can access multiple projects, with a specific prompt version assigned by Helle in each project. The app manages these assignments; Platform-created configuration is an import source. Shared project membership never shares private chats.
 - Customers activate their own identity. Email links are the initial sign-in direction; administrator MFA is required.
 - Private chat histories belong to the customer. Normal administrators cannot read unshared chats or impersonate customers.
 - Customers may explicitly share a fixed snapshot with Helle and revoke future access. Future messages remain private.
@@ -48,3 +49,7 @@ The first release includes admin knowledge uploads. Customer document uploads ar
 - English review: `output/pdf/AI-Kundetypeassistent-project-proposal-EN.pdf`
 
 The proposals contain the supporting OpenAI, EDPB and OWASP references. Recheck current implementation documentation when each task starts. The first batch now has an implemented local demo in `app/`, with synthetic data and no production integrations. See the architecture, decision register and testing guide in `docs/`, plus `app/design-qa.md` for browser evidence. Production security, real AI performance and GDPR operations remain unimplemented later tasks.
+
+## Meeting update — projects and prompts
+
+AK-059 implements the synthetic assignment/project-switching prototype. AK-060–062 add the production memberships, portable prompt import and isolation verification. See [the specification](../docs/projects-and-prompts.md). Existing schema, authorization, history, usage, gateway and workflow tasks now include this scope. The demo retains a shared per-customer allowance across projects; per-project charging remains an open business decision.

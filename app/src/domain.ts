@@ -4,10 +4,20 @@ export type Message = {
   content: string;
   status: "complete" | "streaming" | "cancelled";
 };
-export type Chat = { id: string; title: string; messages: Message[] };
+export type Chat = {
+  id: string;
+  customerId: string;
+  projectId: string;
+  promptId: string;
+  promptVersion: number;
+  title: string;
+  messages: Message[];
+};
 export type Share = {
   id: string;
   chatId: string;
+  customerId: string;
+  projectId: string;
   title: string;
   messages: Message[];
   createdAt: string;
@@ -42,6 +52,10 @@ export function createDemoChats(): Chat[] {
   return [
     {
       id: "welcome",
+      customerId: "sofie",
+      projectId: "green",
+      promptId: "green-helle",
+      promptVersion: 1,
       title: "Velkomstmail til nye kunder",
       messages: [
         {
@@ -60,6 +74,10 @@ export function createDemoChats(): Chat[] {
     },
     {
       id: "linkedin",
+      customerId: "sofie",
+      projectId: "green",
+      promptId: "green-helle",
+      promptVersion: 1,
       title: "Et roligt opslag til LinkedIn",
       messages: [
         {
@@ -80,6 +98,10 @@ export function createDemoChats(): Chat[] {
     },
     {
       id: "website",
+      customerId: "sofie",
+      projectId: "green",
+      promptId: "green-helle",
+      promptVersion: 1,
       title: "Tekst til min forside",
       messages: [
         {
@@ -94,6 +116,29 @@ export function createDemoChats(): Chat[] {
           role: "assistant",
           content:
             "Lad os gøre det enkelt og personligt:\n\n## Her er der plads til dig\n\nVi møder dig, hvor du er. Sammen finder vi den løsning, der passer til dine behov, og vi er med dig hele vejen.\n\nDu er velkommen til en uforpligtende samtale, når du er klar.",
+          status: "complete",
+        },
+      ],
+    },
+    {
+      id: "yellow-plan",
+      customerId: "sofie",
+      projectId: "yellow",
+      promptId: "yellow-aleksandar",
+      promptVersion: 1,
+      title: "Et tydeligt næste skridt",
+      messages: [
+        {
+          id: "yellow-user",
+          role: "user",
+          content: "Hjælp mig med et klart næste skridt til mine kunder.",
+          status: "complete",
+        },
+        {
+          id: "yellow-answer",
+          role: "assistant",
+          content:
+            "## Gør næste skridt tydeligt\n\nFortæl kunden, hvad de kan gøre nu, og hvad der sker bagefter. Hold det kort, konkret og let at handle på.",
           status: "complete",
         },
       ],
@@ -154,6 +199,8 @@ export function createShare(
   return {
     id,
     chatId: chat.id,
+    customerId: chat.customerId,
+    projectId: chat.projectId,
     title: chat.title,
     messages: structuredClone(messages),
     createdAt: now,
@@ -225,6 +272,7 @@ export async function* streamDemo(
   prompt: string,
   scenario: Scenario,
   signal: AbortSignal,
+  preparedReply?: string,
 ): AsyncGenerator<string> {
   await wait(scenario === "slow" ? 2500 : 450, signal);
   if (scenario === "error")
@@ -233,7 +281,7 @@ export async function* streamDemo(
     );
   if (scenario === "exhausted")
     throw new Error("Du har brugt dine svar i denne demo.");
-  const answer = demoAnswer(prompt);
+  const answer = preparedReply || demoAnswer(prompt);
   for (let position = 0; position < answer.length; position += 18) {
     await wait(scenario === "slow" ? 120 : 24, signal);
     yield answer.slice(position, position + 18);

@@ -49,5 +49,7 @@ These principal text pairs exceed 4.5:1; control boundaries exceed 3:1. This cal
 - Sharing: exact message selection, recipient explanation, preview, confirmed copy and revocation.
 - Dialogs: native modal focus trapping, close control and Escape; mobile drawer traps focus and restores its opener.
 - Reduced motion: transition suppression; no decorative animations.
+- Project selector: assigned projects only, selected prompt/version context, scoped history and a no-project state. The mobile drawer includes the selector in keyboard navigation.
+- Customer assignments: multiple project checkboxes with one scoped prompt-version selector each; two desktop columns collapse to one on mobile. Prompt publication appends a version and preserves existing assignments.
 
 The extra demo label and explanatory states are intentional. Prices and access controls are clearly simulated. The original attachment icon opens an explanation because customer file uploads are a later optional task.
