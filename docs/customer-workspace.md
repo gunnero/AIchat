@@ -30,6 +30,8 @@ Admins use **Assign assistants** in the Admin list to configure project/prompt a
 
 ## Projects and instructions
 
+Admins choose **Projects and prompts → Edit → Workspace colour** to assign black, yellow, purple or green. The sidebar, mobile drawer and header colour marker follow the selected assigned project for both roles. Names remain visible so colour is an additional cue. Existing/new automatic projects default to black; edits that omit a colour preserve the current setting. Unknown colours are rejected by the API/database and safely fall back to black in the browser. The fixed palette provides at least 4.5:1 text contrast on background, controls and hover states. Backoffice navigation and the white chat area retain the approved layout.
+
 A verified API connection creates its linked app project, followed by **Connect an OpenAI prompt**. Enter the saved prompt ID once and edit instructions in OpenAI Platform. Existing app copies, customer assignments and chats are preserved. See [the current workflow, provider limits and migration rules](platform-prompts.md). AI replies and effective remote-version tracking are not enabled by this configuration batch.
 
 ## API
@@ -49,11 +51,13 @@ Creation retries reuse the customer's request identifier. Message writes lock th
 
 ## PostgreSQL and migration
 
-Production uses PostgreSQL **18**, schema **5**, Node **24.22**, and the existing single Fastify service. SQLite remains only for legacy tests and an explicit one-time import. Startup requires `CONTROL_DATABASE_URL` and `CHAT_DATABASE_URL`, checks the runtime roles/schema and fails closed; it never opens SQLite as a fallback.
+Production uses PostgreSQL **18**, schema **6**, Node **24.22**, and the existing single Fastify service. SQLite remains only for legacy tests and an explicit one-time import. Startup requires `CONTROL_DATABASE_URL` and `CHAT_DATABASE_URL`, checks the runtime roles/schema and fails closed; it never opens SQLite as a fallback.
 
 On jig the dedicated `18/ai` cluster uses port 5433 **only as a Unix socket** in `/run/postgresql-ai`; `listen_addresses` is empty. Peer mapping permits the non-login OS service account `ai-kundetype` to use only `ai_control`/`ai_chat`, and the non-login operator account `ai-migrate` to use `ai_migrator`. There are no database passwords in the service or browser. Database files belong to postgres; application code stays root-owned/read-only and the vault/journal stay in private service state. PostgreSQL logs omit statements, bindings and detail fields.
 
-Current additive upgrade: run `server/migrate.mjs` as the operator after a fresh PostgreSQL/vault/journal backup. Schema 4 → 5 adds personal display-name profiles and Admin workspace ownership, and updates the session-to-owner row-policy function. It preserves identity rows, enrolled credentials, sessions and encrypted history. New Admin workspaces are provisioned only through a fresh-MFA-authorized assignment action and receive new owner IDs; no customer history is reused. After new writes, recovery requires schema-5-compatible code or a forward repair that preserves current PostgreSQL writes. Schema 3 → 4 prompt links remain an earlier upgrade. [Details](platform-prompts.md#migration-and-recovery).
+Current additive upgrade: run `server/migrate.mjs` as the operator after a fresh PostgreSQL/vault/journal backup. Schema 5 → 6 adds `project_appearance` and the assignment-scoped `chat_workspace_projects()` metadata function. It preserves identities, enrolled credentials, sessions, assignments and encrypted history. `ai_chat` has execute-only access to this function and no direct table access. Backups/restoration support schemas 3–6. Rehearse the previous-schema restore and upgrade before activation; after migration, use schema-6-compatible code or a forward repair that preserves current PostgreSQL writes. Do not rewind a database to recover a colour/UI change. The prior application's only required compatibility change is its startup schema guard; existing project tables/functions remain unchanged.
+
+Earlier schema 4 → 5 added personal display-name profiles and Admin workspace ownership, and updated the session-to-owner row-policy function. New Admin workspaces are provisioned only through a fresh-MFA-authorized assignment action and receive new owner IDs; no customer history is reused. Schema 3 → 4 prompt links remain an earlier upgrade. [Details](platform-prompts.md#migration-and-recovery).
 
 Original SQLite cutover procedure:
 

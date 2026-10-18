@@ -5,6 +5,11 @@ import { PlatformPromptForm } from "./PlatformPromptForm";
 import { AuthenticatorSetup } from "./AuthenticatorSetup";
 import { Dialog } from "./Dialog";
 import { AccountPanel } from "./AccountPanel";
+import {
+  projectColors,
+  projectColor,
+  type ProjectColor,
+} from "./project-colors";
 import { t, getLanguage, useLanguage, LanguagePicker } from "./i18n";
 import {
   useEffect,
@@ -75,6 +80,7 @@ type Project = {
   description: string;
   connection_id: string | null;
   enabled: number;
+  color?: ProjectColor;
 };
 type Prompt = {
   id: string;
@@ -846,6 +852,16 @@ export function App() {
                         <h3>{p.name}</h3>
                         <span className="pill">
                           {p.enabled ? t("Aktivt") : t("På pause")}
+                        </span>
+                        <span
+                          className="project-color-badge"
+                          data-project-color={projectColor(p.color)}
+                        >
+                          {t(
+                            projectColors.find(
+                              (color) => color.id === projectColor(p.color),
+                            )!.label,
+                          )}
                         </span>
                       </div>
                       <button
@@ -1661,6 +1677,7 @@ function ProjectForm({
           description: f.description,
           connectionId: f.connectionId || null,
           enabled: f.enabled === "on",
+          color: f.color,
         });
       }}
     >
@@ -1703,6 +1720,29 @@ function ProjectForm({
         />
         {t("Projektet er aktivt")}{" "}
       </label>
+      <fieldset>
+        <legend>{t("Farve på arbejdsrum")}</legend>
+        <div className="project-color-options">
+          {projectColors.map((color) => (
+            <label
+              className="project-color-option"
+              data-project-color={color.id}
+              key={color.id}
+            >
+              <input
+                type="radio"
+                name="color"
+                value={color.id}
+                defaultChecked={projectColor(p?.color) === color.id}
+              />
+              {t(color.label)}
+            </label>
+          ))}
+        </div>
+        <p className="footnote">
+          {t("Sidemenuen bruger denne farve, når projektet er valgt.")}
+        </p>
+      </fieldset>
       <p className="footnote">
         {t(
           "Du kan vælge den første forbindelse senere. Et tilknyttet projekt med promptversioner beholder sin OpenAI-forbindelse. Opret et nyt projekt, hvis det skal flyttes til en anden forbindelse.",

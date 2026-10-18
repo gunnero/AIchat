@@ -424,6 +424,215 @@ after(async () => {
   }
 });
 pgtest(
+  "PostgreSQL: project colours persist, validate and remain scoped to assigned workspaces",
+  async () => {
+    const { a, b, p, other, admin, main } = fixtures;
+    const endpoint = `/backoffice/api/projects/${p.id}`;
+    const record = (await req(admin, "/backoffice/api/projects"))
+      .json()
+      .find((project) => project.id === p.id);
+    const body = {
+      name: record.name,
+      description: record.description,
+      connectionId: null,
+      enabled: true,
+    };
+    assert.equal(record.color, "black");
+    for (const who of [a, b])
+      assert.equal(
+        (await req(who, endpoint, "PUT", { ...body, color: "yellow" }))
+          .statusCode,
+        403,
+      );
+    assert.equal(
+      (
+        await req(
+          { headers: { origin, "content-type": "application/json" } },
+          endpoint,
+          "PUT",
+          { ...body, color: "yellow" },
+        )
+      ).statusCode,
+      401,
+    );
+    for (const color of ["yellow", "purple", "green", "black"]) {
+      assert.equal(
+        (await req(admin, endpoint, "PUT", { ...body, color })).statusCode,
+        200,
+      );
+      for (const who of [a, b])
+        assert.equal(
+          (await req(who, "/api/customer/projects"))
+            .json()
+            .projects.find((project) => project.id === p.id).color,
+          color,
+        );
+    }
+    assert.equal(
+      (await req(main, endpoint, "PUT", { ...body, color: "green" }))
+        .statusCode,
+      200,
+    );
+    assert.equal((await req(admin, endpoint, "PUT", body)).statusCode, 200);
+    for (const color of ["red", "#ff0000", "url(https://untrusted.test)", null])
+      assert.equal(
+        (await req(admin, endpoint, "PUT", { ...body, color })).statusCode,
+        400,
+      );
+    assert.equal(
+      (
+        await q("SELECT color FROM project_appearance WHERE project_id=$1", [
+          p.id,
+        ])
+      )[0].color,
+      "green",
+    );
+    assert.equal(
+      (await req(admin, "/backoffice/api/projects"))
+        .json()
+        .find((project) => project.id === p.id).color,
+      "green",
+    );
+    await maintenance(() =>
+      q("INSERT INTO project_appearance VALUES($1,'purple')", [other.id]),
+    );
+    assert.equal(
+      (await req(a, "/api/customer/projects"))
+        .json()
+        .projects.find((project) => project.id === other.id).color,
+      "purple",
+    );
+    assert.equal(
+      (await req(b, "/api/customer/projects"))
+        .json()
+        .projects.some((project) => project.id === other.id),
+      false,
+    );
+    const chat = openPostgres(uri("ai_chat"));
+    try {
+      assert.deepEqual(
+        (await chat.query("SELECT * FROM public.chat_workspace_projects()"))
+          .rows,
+        [],
+      );
+      await assert.rejects(
+        chat.query("SELECT * FROM project_appearance"),
+        (e) => e.code === "42501",
+      );
+      await assert.rejects(
+        chat.query("INSERT INTO project_appearance VALUES($1,'yellow')", [
+          other.id,
+        ]),
+        (e) => e.code === "42501",
+      );
+    } finally {
+      await chat.close();
+    }
+    await maintenance(() =>
+      q("DELETE FROM assignments WHERE customer_id=$1 AND project_id=$2", [
+        a.customerId,
+        p.id,
+      ]),
+    );
+    assert.equal(
+      (await req(a, "/api/customer/projects"))
+        .json()
+        .projects.some((project) => project.id === p.id),
+      false,
+    );
+  },
+);
+
+pgtest(
+  "PostgreSQL: schema 5 upgrade and backup restoration preserve identity, MFA and private history",
+  async () => {
+    const { a, p, main } = fixtures;
+    const c = await create(a, p);
+    await save(a, p, c, "Appearance migration fixture");
+    const identities = await q("SELECT * FROM admins ORDER BY id"),
+      sessions = await q("SELECT * FROM sessions ORDER BY hash");
+    const encrypted = await maintenance(() =>
+      q("SELECT * FROM private.messages ORDER BY id"),
+    );
+    await maintenance(() =>
+      q(
+        "DROP FUNCTION public.chat_workspace_projects(); DROP TABLE project_appearance; DELETE FROM schema_version WHERE version=6",
+      ),
+    );
+    const { backupPostgres, restorePostgres } =
+      await import("../server/postgres-backup.mjs");
+    const { writeFile } = await import("node:fs/promises");
+    const dir = await mkdtemp(join(tmpdir(), "ai-appearance-upgrade-"));
+    const restore = openPostgres(process.env.TEST_RESTORE_DATABASE_URL);
+    try {
+      await writeFile(join(dir, "vault.key"), key, { mode: 0o600 });
+      const journal = join(dir, "deletions.jsonl");
+      await writeFile(journal, "", { mode: 0o600 });
+      assert.equal(
+        (
+          await backupPostgres({
+            databaseUrl: uri("ai_migrator"),
+            state: dir,
+            destination: join(dir, "backup"),
+          })
+        ).schema,
+        5,
+      );
+      await restore.transaction(async () => {
+        await restore.query("SET LOCAL ROLE ai_owner");
+        await restore.query(
+          "DROP SCHEMA IF EXISTS private CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION ai_owner",
+        );
+      });
+      assert.equal(
+        (
+          await restorePostgres({
+            databaseUrl: process.env.TEST_RESTORE_DATABASE_URL,
+            backup: join(dir, "backup"),
+            journal,
+          })
+        ).schema,
+        5,
+      );
+      assert.deepEqual(await migrate(restore), { schema: 6, imported: false });
+      assert.deepEqual(
+        (await restore.query("SELECT * FROM admins ORDER BY id")).rows,
+        identities,
+      );
+      await restore.transaction(async () => {
+        await restore.query("SET LOCAL ROLE ai_owner");
+        assert.deepEqual(
+          (await restore.query("SELECT * FROM private.messages ORDER BY id"))
+            .rows,
+          encrypted,
+        );
+      });
+      assert.deepEqual(await migrate(owner), { schema: 6, imported: false });
+      assert.deepEqual(await migrate(owner), { schema: 6, imported: false });
+      assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), identities);
+      assert.deepEqual(
+        await q("SELECT * FROM sessions ORDER BY hash"),
+        sessions,
+      );
+      assert.equal(
+        (await req(a, "/api/customer/projects"))
+          .json()
+          .projects.find((project) => project.id === p.id).color,
+        "black",
+      );
+      assert.equal((await req(a, url(p, c.id))).statusCode, 200);
+      await assert.rejects(
+        app.db.query("UPDATE admins SET protected=0 WHERE id=$1", [main.id]),
+        (e) => e.code === "23514",
+      );
+    } finally {
+      await restore.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+pgtest(
   "PostgreSQL: every operation is private across customers, projects and both Admin identities",
   async () => {
     const { a, b, p, other, admin, main } = fixtures,
@@ -979,7 +1188,7 @@ pgtest(
         journal,
       });
       assert.equal(result.deletionJournalApplied, true);
-      assert.equal(result.schema, 5);
+      assert.equal(result.schema, 6);
       assert.equal(
         (
           await restore.query(
@@ -1400,7 +1609,7 @@ pgtest(
 );
 
 pgtest(
-  "PostgreSQL: additive schema 3 to 5 migration preserves MFA, owner protection, sessions, vault ciphertext and private history",
+  "PostgreSQL: additive schema 3 to 6 migration preserves MFA, owner protection, sessions, vault ciphertext and private history",
   async () => {
     const { a, p, main } = fixtures,
       c = await create(a, p);
@@ -1409,6 +1618,9 @@ pgtest(
     const sessions = await q("SELECT * FROM sessions ORDER BY hash");
     const versions = await q("SELECT * FROM prompt_versions ORDER BY id");
     await maintenance(async () => {
+      await q(
+        "DROP FUNCTION public.chat_workspace_projects(); DROP TABLE project_appearance",
+      );
       await q("DROP TABLE platform_prompt_links");
       await q("DROP INDEX project_connection_binding");
       await q("DELETE FROM schema_version WHERE version>=4");
@@ -1452,7 +1664,7 @@ pgtest(
         journal,
       });
       assert.equal(result.schema, 3);
-      assert.deepEqual(await migrate(restore), { schema: 5, imported: false });
+      assert.deepEqual(await migrate(restore), { schema: 6, imported: false });
       assert.deepEqual(
         (await restore.query("SELECT * FROM admins ORDER BY id")).rows,
         before,
@@ -1473,8 +1685,8 @@ pgtest(
       await restore.close();
       await rm(dir, { recursive: true, force: true });
     }
-    assert.deepEqual(await migrate(owner), { schema: 5, imported: false });
-    assert.deepEqual(await migrate(owner), { schema: 5, imported: false });
+    assert.deepEqual(await migrate(owner), { schema: 6, imported: false });
+    assert.deepEqual(await migrate(owner), { schema: 6, imported: false });
     assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), before);
     assert.deepEqual(await q("SELECT * FROM sessions ORDER BY hash"), sessions);
     assert.deepEqual(
@@ -1495,14 +1707,17 @@ pgtest(
 );
 
 pgtest(
-  "PostgreSQL: schema 4 upgrade and schema 5 restore preserve identities, personal profiles and private Admin history",
+  "PostgreSQL: schema 4 upgrade and schema 6 restore preserve identities, profiles, project colours and private Admin history",
   async () => {
     const { main, p } = fixtures;
     const before = await q("SELECT * FROM admins ORDER BY id");
     const sessions = await q("SELECT * FROM sessions ORDER BY hash");
     await maintenance(async () => {
       await q("DROP TABLE account_profiles,admin_workspaces");
-      await q("DELETE FROM schema_version WHERE version=5");
+      await q(
+        "DROP FUNCTION public.chat_workspace_projects(); DROP TABLE project_appearance",
+      );
+      await q("DELETE FROM schema_version WHERE version>=5");
       const schema = await readFile(
         new URL("../server/schema.sql", import.meta.url),
         "utf8",
@@ -1515,7 +1730,7 @@ pgtest(
         legacyFunction.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"),
       );
     });
-    assert.deepEqual(await migrate(owner), { schema: 5, imported: false });
+    assert.deepEqual(await migrate(owner), { schema: 6, imported: false });
     assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), before);
     assert.deepEqual(await q("SELECT * FROM sessions ORDER BY hash"), sessions);
     assert.equal(
@@ -1537,6 +1752,9 @@ pgtest(
     );
     const c = await create(main, p);
     await save(main, p, c, "Private Admin recovery fixture");
+    await maintenance(() =>
+      q("INSERT INTO project_appearance VALUES($1,'purple')", [p.id]),
+    );
     const { backupPostgres, restorePostgres } =
       await import("../server/postgres-backup.mjs");
     const { writeFile } = await import("node:fs/promises");
@@ -1554,7 +1772,7 @@ pgtest(
             destination: join(dir, "backup"),
           })
         ).schema,
-        5,
+        6,
       );
       await restore.transaction(async () => {
         await restore.query("SET LOCAL ROLE ai_owner");
@@ -1570,13 +1788,22 @@ pgtest(
             journal,
           })
         ).schema,
-        5,
+        6,
       );
       await restore.transaction(async () => {
         await restore.query("SET LOCAL ROLE ai_owner");
         assert.deepEqual(
           (await restore.query("SELECT * FROM admins ORDER BY id")).rows,
           before,
+        );
+        assert.equal(
+          (
+            await restore.query(
+              "SELECT color FROM project_appearance WHERE project_id=$1",
+              [p.id],
+            )
+          ).rows[0].color,
+          "purple",
         );
         assert.equal(
           (

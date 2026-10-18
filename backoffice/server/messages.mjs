@@ -1,5 +1,12 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Farve på arbejdsrum": "Workspace colour",
+  "Sidemenuen bruger denne farve, når projektet er valgt.":
+    "The sidebar uses this colour when this project is selected.",
+  Sort: "Black",
+  Gul: "Yellow",
+  Lilla: "Purple",
+  Grøn: "Green",
   "Kontooplysningerne kunne ikke indlæses. Genindlæs siden og prøv igen.":
     "Your account details could not be loaded. Refresh the page and try again.",
   "Åbn administration, vælg Admins, og tildel en assistent til din konto.":

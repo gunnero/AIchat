@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { linkTable } from "./platform-schema.mjs";
 import { accountTables } from "./account-schema.mjs";
+import { appearanceTable } from "./appearance-schema.mjs";
 export function openDatabase(path) {
   const db = new DatabaseSync(path);
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -61,6 +62,9 @@ export function openDatabase(path) {
       .get()
   )
     transaction(db, () => db.exec(accountTables));
+  db.exec(
+    appearanceTable.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"),
+  );
   return db;
 }
 export function transaction(db, fn) {

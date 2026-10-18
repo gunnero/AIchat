@@ -173,6 +173,54 @@ async function openConnection() {
   return { user, dialog };
 }
 
+test.each(["en", "da"] as const)(
+  "Admins can assign and reopen a project's workspace colour (%s)",
+  async (language) => {
+    setLanguage(language);
+    const project = {
+      id: "synthetic-project",
+      name: "Customer platform",
+      description: "",
+      connection_id: null,
+      enabled: 1,
+      color: "yellow",
+    };
+    mocked.mockImplementation(async (path, method = "GET", body) => {
+      if (path === "/auth/session") return session;
+      if (path === "/projects") return [project];
+      if (path === "/projects/" + project.id && method === "PUT") {
+        project.color = (body as { color: string }).color;
+        return { id: project.id };
+      }
+      return [];
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(
+      await screen.findByRole("button", { name: t("Projekter og prompter") }),
+    );
+    await user.click(screen.getByRole("button", { name: t("Redigér") }));
+    expect(screen.getByRole("radio", { name: t("Gul") })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: t("Grøn") }));
+    await user.click(screen.getByRole("button", { name: t("Gem ændringer") }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mocked).toHaveBeenCalledWith(
+      "/projects/" + project.id,
+      "PUT",
+      {
+        name: project.name,
+        description: "",
+        connectionId: null,
+        enabled: true,
+        color: "green",
+      },
+      session.csrf,
+    );
+    await user.click(screen.getByRole("button", { name: t("Redigér") }));
+    expect(screen.getByRole("radio", { name: t("Grøn") })).toBeChecked();
+  },
+);
+
 test("the Admin account badge opens personal settings and the private workspace link is available", async () => {
   mocked.mockImplementation(async (path) => {
     if (path === "/auth/session") return session;

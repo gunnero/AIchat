@@ -22,8 +22,14 @@ import { api, type Session } from "./client";
 import { t, useLanguage, LanguagePicker, getLanguage } from "./i18n";
 import "./customer.css";
 import { AccountDialog } from "./AccountPanel";
+import { projectColor, type ProjectColor } from "./project-colors";
 
-type Project = { id: string; name: string; description: string };
+type Project = {
+  id: string;
+  name: string;
+  description: string;
+  color?: ProjectColor;
+};
 type Conversation = {
   id: string;
   projectId: string;
@@ -546,7 +552,7 @@ export function CustomerWorkspace({
     </>
   );
   return (
-    <div className="cw-shell">
+    <div className="cw-shell" data-project-color={projectColor(project?.color)}>
       <aside className="cw-sidebar">{sidebar}</aside>
       <dialog
         ref={drawerRef}

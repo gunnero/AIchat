@@ -61,6 +61,7 @@ const projectInput = z
     description: z.string().trim().max(1000),
     connectionId: z.uuid().nullable(),
     enabled: z.boolean(),
+    color: z.enum(["black", "yellow", "purple", "green"]).optional(),
   })
   .strict();
 const connectionInput = z
@@ -1003,7 +1004,12 @@ export async function buildServer({
   });
   app.get(
     P + "/projects",
-    async () => await db.prepare("SELECT * FROM projects ORDER BY name").all(),
+    async () =>
+      await db
+        .prepare(
+          "SELECT p.*,COALESCE(a.color,'black') AS color FROM projects p LEFT JOIN project_appearance a ON a.project_id=p.id ORDER BY p.name",
+        )
+        .all(),
   );
   async function saveProject(r, id, create) {
     const v = projectInput.parse(r.body);
@@ -1052,6 +1058,12 @@ export async function buildServer({
             id,
           );
       }
+      if (v.color !== undefined)
+        await db
+          .prepare(
+            "INSERT INTO project_appearance(project_id,color) VALUES(?,?) ON CONFLICT(project_id) DO UPDATE SET color=excluded.color",
+          )
+          .run(id, v.color);
       await audit(
         r.adminId,
         create ? "project.created" : "project.updated",

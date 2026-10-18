@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { openPostgres } from "./postgres.mjs";
 import { postgresUpgrade } from "./platform-schema.mjs";
 import { accountUpgrade } from "./account-schema.mjs";
+import { appearanceUpgrade } from "./appearance-schema.mjs";
 
 const tables = [
   "customers",
@@ -12,6 +13,7 @@ const tables = [
   "admin_workspaces",
   "connections",
   "projects",
+  "project_appearance",
   "prompt_versions",
   "platform_prompt_links",
   "assignments",
@@ -51,16 +53,18 @@ export async function migrate(db, sqlitePath) {
           await db.query("SELECT max(version) AS v FROM schema_version")
         ).rows[0].v;
         if (version === 3) await db.query(postgresUpgrade);
-        else if (![4, 5].includes(version))
+        else if (![4, 5, 6].includes(version))
           throw new Error("Unsupported schema");
         if (version < 5) await db.query(accountUpgrade);
-        return { schema: 5, imported: false };
+        if (version < 6) await db.query(appearanceUpgrade);
+        return { schema: 6, imported: false };
       }
       await db.query(
         await readFile(new URL("./schema.sql", import.meta.url), "utf8"),
       );
       await db.query(postgresUpgrade);
       await db.query(accountUpgrade);
+      await db.query(appearanceUpgrade);
       let records = 0;
       if (source)
         for (const table of tables) {
@@ -69,6 +73,7 @@ export async function migrate(db, sqlitePath) {
               "platform_prompt_links",
               "account_profiles",
               "admin_workspaces",
+              "project_appearance",
             ].includes(table) &&
             !source
               .prepare(
@@ -105,7 +110,7 @@ export async function migrate(db, sqlitePath) {
         }
       // Session and in-progress setup/registration cookies are intentionally
       // invalidated once; enrolled credentials and pending invitations survive.
-      return { schema: 5, imported: !!source, records };
+      return { schema: 6, imported: !!source, records };
     });
   } finally {
     source?.close();

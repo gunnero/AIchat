@@ -10,7 +10,7 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 import { CustomerWorkspace } from "./CustomerWorkspace";
 import { api, type Session } from "./client";
-import { setLanguage } from "./i18n";
+import { setLanguage, t } from "./i18n";
 vi.mock("./client", () => ({ api: vi.fn() }));
 const mocked = vi.mocked(api);
 const session: Session = {
@@ -57,6 +57,52 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+test.each(["en", "da"] as const)(
+  "project switching uses the assigned sidebar colour and safely defaults unknown colours (%s)",
+  async (language) => {
+    setLanguage(language);
+    const colored = [
+      { ...projects[0], color: "yellow" },
+      { ...projects[1], color: "purple" },
+      { id: "p3", name: "Green platform", description: "", color: "green" },
+      {
+        id: "p4",
+        name: "Unknown platform",
+        description: "",
+        color: "url(untrusted)",
+      },
+    ];
+    mocked.mockImplementation(async (path) =>
+      path === "/customer/projects"
+        ? { projects: colored }
+        : { items: [], nextCursor: null },
+    );
+    const user = userEvent.setup();
+    const { container } = render(
+      <CustomerWorkspace session={session} logout={vi.fn()} />,
+    );
+    const selector = await screen.findByRole("combobox", {
+      name: t("Dine projekter"),
+    });
+    const shell = container.querySelector(".cw-shell");
+    await waitFor(() =>
+      expect(shell).toHaveAttribute("data-project-color", "yellow"),
+    );
+    for (const [id, color] of [
+      ["p2", "purple"],
+      ["p3", "green"],
+      ["p4", "black"],
+      ["p1", "yellow"],
+    ]) {
+      await user.selectOptions(selector, id);
+      expect(shell).toHaveAttribute("data-project-color", color);
+    }
+    expect(
+      mocked.mock.calls.every(([, method = "GET"]) => method === "GET"),
+    ).toBe(true);
+  },
+);
+
 test("saving retries reuse a request ID and render untrusted saved text literally, with no simulated AI reply", async () => {
   const user = userEvent.setup();
   let created = false,

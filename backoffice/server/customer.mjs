@@ -72,7 +72,7 @@ export function installCustomer(
   app.get("/api/customer/projects", async (r) =>
     run(r, async () => ({
       projects: await query(
-        "SELECT id,name,description FROM public.chat_projects()",
+        "SELECT id,name,description,color FROM public.chat_workspace_projects()",
       ),
       aiEnabled: false,
     })),
