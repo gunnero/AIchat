@@ -1,5 +1,50 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  "Tilføj en API-forbindelse til projektet først.":
+    "Add an API connection to this project first.",
+  "Navnet bruges allerede i projektet. Vælg et andet navn.":
+    "This name is already used in the project. Choose another name.",
+  "Denne prompt administreres i OpenAI Platform. Redigér den der.":
+    "This prompt is managed in OpenAI Platform. Edit it there.",
+  "Indsæt promptens ID fra OpenAI. Det starter med pmpt_.":
+    "Paste the prompt ID from OpenAI. It starts with pmpt_.",
+  "Opret og redigér assistenten i OpenAI Platform. Tilknyt dens prompt-ID her én gang.":
+    "Set up and edit the assistant in OpenAI Platform. Connect its prompt ID here once.",
+  "OpenAI-prompt-ID": "OpenAI prompt ID",
+  "Kopiér ID'et fra din gemte prompt i OpenAI. Du skal ikke kopiere instruktionerne.":
+    "Copy the ID from your saved prompt in OpenAI. You don't need to copy the instructions.",
+  "Åbn OpenAI Platform": "Open OpenAI Platform",
+  "Administreres i OpenAI · Udgivet standardversion":
+    "Managed in OpenAI · Published default",
+  "Fremtidige AI-svar skal bruge OpenAI-promptens udgivne standardversion. Foretag ændringer i OpenAI Platform.":
+    "Future AI replies will use the prompt's published default in OpenAI. Make changes in OpenAI Platform.",
+  "AI-svar er ikke aktiveret endnu. Tilknytningen gemmes nu; adgang til prompten er endnu ikke testet.":
+    "AI replies are not enabled yet. This saves the link; access to the prompt has not been tested.",
+  "Tilknyt prompt": "Connect prompt",
+  "Projektet er oprettet. Tilknyt nu din OpenAI-prompt.":
+    "Project created. Connect your OpenAI prompt next.",
+  "Prompten er tilknyttet. Foretag ændringer i OpenAI Platform.":
+    "Prompt linked. Make changes in OpenAI Platform.",
+  "Tilknyt dine OpenAI-prompter, og vælg den rette assistent til hver kunde.":
+    "Connect your OpenAI prompts and choose the right assistant for each customer.",
+  "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilknytte din OpenAI-prompt.":
+    "Add a project key. We create the project so you can connect your OpenAI prompt.",
+  "Forbind OpenAI, tilknyt din prompt og invitér din første kunde.":
+    "Connect OpenAI, link your prompt and invite your first customer.",
+  "Tilknyt din OpenAI-prompt": "Connect your OpenAI prompt",
+  "Opret og redigér instruktionerne i OpenAI Platform.":
+    "Set up and edit the instructions in OpenAI Platform.",
+  "Når forbindelsen gemmes, oprettes et projekt i appen. Tilknyt derefter din gemte OpenAI-prompt med dens ID. Kontrollen bekræfter ikke adgang til prompten eller kreditbalance.":
+    "Saving a connection creates an app project. Then connect your saved OpenAI prompt by its ID. The check does not confirm prompt access or credit balance.",
+  Prompter: "Prompts",
+  "Tilknyt OpenAI-prompt": "Connect an OpenAI prompt",
+  "Redigér i OpenAI": "Edit in OpenAI",
+  "Tilknyt en OpenAI-prompt, før projektet tildeles en kunde.":
+    "Connect an OpenAI prompt before assigning the project to a customer.",
+  "Instruktionerne administreres i OpenAI Platform. Appen gemmer tilknytningen og kundernes adgang. AI-svar er endnu ikke aktiveret.":
+    "Instructions are managed in OpenAI Platform. The app stores the link and customers' access. AI replies are not enabled yet.",
+  "OpenAI-standardversion": "OpenAI default",
+  "OpenAI-prompt tilknyttet": "OpenAI prompt linked",
   "Importér fra en fil · valgfrit": "Import from a file · optional",
   "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilføje instruktionerne.":
     "Add a project key. We create the project so you can add the instructions.",

@@ -1,7 +1,7 @@
 import { api, ApiError, type Session } from "./client";
 import { CustomerWorkspace } from "./CustomerWorkspace";
 import { SecurityConfirmation } from "./SecurityConfirmation";
-import { PromptImportForm } from "./PromptImportForm";
+import { PlatformPromptForm } from "./PlatformPromptForm";
 import { t, getLanguage, useLanguage, LanguagePicker } from "./i18n";
 import {
   useEffect,
@@ -80,6 +80,9 @@ type Prompt = {
   version: number;
   source_ref: string;
   checksum: string;
+  source_kind?: "local" | "platform";
+  provider_prompt_id?: string | null;
+  version_policy?: "default" | null;
 };
 type Audit = {
   id: string;
@@ -295,6 +298,7 @@ export function App() {
         projectCreated?: boolean;
         imported?: number;
         skipped?: number;
+        linked?: boolean;
       };
       let result: Result;
       try {
@@ -335,12 +339,16 @@ export function App() {
         navigate("projects");
         const project = next.projects.find((p) => p.id === result.projectId);
         if (result.projectCreated && project) {
-          setNotice(t("Projektet er oprettet. Tilføj nu instruktionerne."));
-          setModal({ type: "prompt-import", value: project });
+          setNotice(t("Projektet er oprettet. Tilknyt nu din OpenAI-prompt."));
+          setModal({ type: "prompt-link", value: project });
         }
       }
       if (result.imported !== undefined)
         setNotice({ imported: result.imported, skipped: result.skipped ?? 0 });
+      if (result.linked)
+        setNotice(
+          t("Prompten er tilknyttet. Foretag ændringer i OpenAI Platform."),
+        );
       return true;
     } catch (e) {
       if (!current()) return false;
@@ -500,11 +508,11 @@ export function App() {
                     )
                   : tab === "projects"
                     ? t(
-                        "Opret projekter og gem gennemgåede promptversioner, som du kan tildele dine kunder.",
+                        "Tilknyt dine OpenAI-prompter, og vælg den rette assistent til hver kunde.",
                       )
                     : tab === "connections"
                       ? t(
-                          "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilføje instruktionerne.",
+                          "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilknytte din OpenAI-prompt.",
                         )
                       : tab === "staff"
                         ? t(
@@ -569,7 +577,7 @@ export function App() {
                 <h3>{t("Kom godt i gang")}</h3>
                 <p>
                   {t(
-                    "Forbind OpenAI, tilføj instruktionerne og invitér din første kunde.",
+                    "Forbind OpenAI, tilknyt din prompt og invitér din første kunde.",
                   )}{" "}
                 </p>
                 <div className="steps">
@@ -586,10 +594,10 @@ export function App() {
                   <button onClick={() => navigate("projects")}>
                     <b>02</b>
                     <span>
-                      {t("Importér dine instruktioner")}{" "}
+                      {t("Tilknyt din OpenAI-prompt")}{" "}
                       <small>
                         {t(
-                          "Gem en gennemgået version af instruktionerne.",
+                          "Opret og redigér instruktionerne i OpenAI Platform.",
                         )}{" "}
                       </small>
                     </span>
@@ -789,7 +797,7 @@ export function App() {
               </Table>
               <p className="footnote">
                 {t(
-                  "Når forbindelsen gemmes, oprettes et projekt i appen. Derefter tilføjer du instruktionerne én gang. Kontrollen bekræfter ikke kreditbalance eller alle modelrettigheder.",
+                  "Når forbindelsen gemmes, oprettes et projekt i appen. Tilknyt derefter din gemte OpenAI-prompt med dens ID. Kontrollen bekræfter ikke adgang til prompten eller kreditbalance.",
                 )}{" "}
               </p>
             </>
@@ -832,21 +840,15 @@ export function App() {
                         ?.label || t("Ingen API-forbindelse valgt")}
                     </p>
                     <div className="prompt-heading">
-                      <h4>{t("Promptversioner")}</h4>
+                      <h4>{t("Prompter")}</h4>
                       <button
                         className="text-button"
                         onClick={() =>
-                          setModal({ type: "prompt-import", value: p })
+                          setModal({ type: "prompt-link", value: p })
                         }
                       >
-                        {t("Importér prompter")}
-                      </button>
-                      <button
-                        className="text-button"
-                        onClick={() => setModal({ type: "prompt", value: p })}
-                      >
                         <PlusIcon size={17} />
-                        {t("Tilføj prompt")}{" "}
+                        {t("Tilknyt OpenAI-prompt")}
                       </button>
                     </div>
                     {data.prompts
@@ -856,24 +858,39 @@ export function App() {
                           <span>
                             <strong>{v.name}</strong>
                             <small>
-                              v{v.version}
+                              {v.source_kind === "platform"
+                                ? t(
+                                    "Administreres i OpenAI · Udgivet standardversion",
+                                  )
+                                : "v" + v.version}
                               {v.source_ref ? " · " + v.source_ref : ""}
                             </small>
                           </span>
-                          <button
-                            className="text-button"
-                            onClick={() =>
-                              setModal({ type: "version", value: v })
-                            }
-                          >
-                            {t("Se / ny version")}{" "}
-                          </button>
+                          {v.source_kind === "platform" ? (
+                            <a
+                              className="text-button"
+                              href="https://platform.openai.com"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {t("Redigér i OpenAI")}
+                            </a>
+                          ) : (
+                            <button
+                              className="text-button"
+                              onClick={() =>
+                                setModal({ type: "version", value: v })
+                              }
+                            >
+                              {t("Se / ny version")}
+                            </button>
+                          )}
                         </div>
                       ))}
                     {!data.prompts.some((v) => v.project_id === p.id) && (
                       <p className="muted">
                         {t(
-                          "Tilføj den første prompt, før projektet tildeles en kunde.",
+                          "Tilknyt en OpenAI-prompt, før projektet tildeles en kunde.",
                         )}{" "}
                       </p>
                     )}
@@ -882,7 +899,7 @@ export function App() {
               </div>
               <p className="footnote">
                 {t(
-                  "Importér godkendte instruktioner én gang, og administrér dem her. Nye versioner ændrer ikke eksisterende kundetildelinger.",
+                  "Instruktionerne administreres i OpenAI Platform. Appen gemmer tilknytningen og kundernes adgang. AI-svar er endnu ikke aktiveret.",
                 )}{" "}
               </p>
             </>
@@ -986,8 +1003,8 @@ export function App() {
                         ? t("Tilføj API-forbindelse")
                         : modal.type === "rotate"
                           ? t("Udskift API-nøgle")
-                          : modal.type === "prompt-import"
-                            ? t("Importér prompter")
+                          : modal.type === "prompt-link"
+                            ? t("Tilknyt OpenAI-prompt")
                             : modal.type === "password"
                               ? t("Skift adgangskode")
                               : t("Prompt og instruktioner")
@@ -1086,21 +1103,13 @@ export function App() {
                   save={(v) => mutate("/prompts", v)}
                 />
               )}
-              {modal.type === "prompt-import" && (
-                <PromptImportForm
+              {modal.type === "prompt-link" && (
+                <PlatformPromptForm
                   key={modal.value!.id}
                   project={modal.value as Project}
-                  projectRef={
-                    data.connections.find(
-                      (c) => c.id === (modal.value as Project).connection_id,
-                    )?.project_ref
-                  }
                   busy={busy}
                   save={(v) =>
-                    mutate(
-                      "/projects/" + modal.value!.id + "/prompts/import",
-                      v,
-                    )
+                    mutate("/projects/" + modal.value!.id + "/prompts/link", v)
                   }
                 />
               )}
@@ -1664,7 +1673,10 @@ function CustomerForm({
                 >
                   {versions.map((v) => (
                     <option key={v.id} value={v.id}>
-                      {v.name} · v{v.version}
+                      {v.name} ·{" "}
+                      {v.source_kind === "platform"
+                        ? t("OpenAI-standardversion")
+                        : "v" + v.version}
                     </option>
                   ))}
                 </select>
@@ -2010,6 +2022,7 @@ function auditText(action: string) {
       "customer.updated": t("Kunde opdateret"),
       "project.created": t("Projekt oprettet"),
       "project.updated": t("Projekt opdateret"),
+      "prompt.linked": t("OpenAI-prompt tilknyttet"),
       "prompt.version_created": t("Promptversion oprettet"),
       "prompt.viewed": t("Prompt åbnet"),
       "connection.created": t("API-forbindelse tilføjet"),

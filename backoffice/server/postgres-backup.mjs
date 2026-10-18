@@ -14,6 +14,18 @@ import { createHash } from "node:crypto";
 import { openPostgres } from "./postgres.mjs";
 const execute = promisify(execFile);
 const checksum = (bytes) => createHash("sha256").update(bytes).digest("hex");
+async function schemaVersion(databaseUrl) {
+  const db = openPostgres(databaseUrl);
+  try {
+    const version = (
+      await db.query("SELECT max(version) AS v FROM schema_version")
+    ).rows[0].v;
+    if (![3, 4].includes(version)) throw new Error("Unsupported backup schema");
+    return version;
+  } finally {
+    await db.close();
+  }
+}
 async function command(name, args) {
   try {
     await execute(name, args, { maxBuffer: 1024 * 1024 });
@@ -26,6 +38,7 @@ async function command(name, args) {
 export async function backupPostgres({ databaseUrl, state, destination }) {
   if (resolve(state) === resolve(destination))
     throw new Error("Specify a new private backup directory");
+  const schema = await schemaVersion(databaseUrl);
   await mkdir(destination, { mode: 0o700 });
   await command(process.env.PG_DUMP || "pg_dump", [
     "--dbname=" + databaseUrl,
@@ -33,6 +46,8 @@ export async function backupPostgres({ databaseUrl, state, destination }) {
     "--no-owner",
     "--file=" + join(destination, "database.dump"),
   ]);
+  if ((await schemaVersion(databaseUrl)) !== schema)
+    throw new Error("Database schema changed during backup");
   await copyFile(join(state, "vault.key"), join(destination, "vault.key"));
   try {
     await copyFile(
@@ -44,7 +59,7 @@ export async function backupPostgres({ databaseUrl, state, destination }) {
     await writeFile(join(destination, "deletions.jsonl"), "");
   }
   const manifest = {
-    schema: 3,
+    schema,
     createdAt: new Date().toISOString(),
     files: {},
   };
@@ -68,7 +83,7 @@ export async function restorePostgres({ databaseUrl, backup, journal }) {
   const manifest = JSON.parse(
     await readFile(join(backup, "manifest.json"), "utf8"),
   );
-  if (manifest.schema !== 3) throw new Error("Unsupported backup");
+  if (![3, 4].includes(manifest.schema)) throw new Error("Unsupported backup");
   for (const name of ["database.dump", "vault.key", "deletions.jsonl"])
     if (manifest.files[name] !== checksum(await readFile(join(backup, name))))
       throw new Error("Backup checksum mismatch");
@@ -102,6 +117,8 @@ export async function restorePostgres({ databaseUrl, backup, journal }) {
       "--exit-on-error",
       join(backup, "database.dump"),
     ]);
+    if ((await schemaVersion(databaseUrl)) !== manifest.schema)
+      throw new Error("Backup schema mismatch");
     const journalOutput = journal + ".replayed";
     await db.transaction(async () => {
       await db.query("SET LOCAL ROLE ai_owner");
@@ -143,7 +160,7 @@ export async function restorePostgres({ databaseUrl, backup, journal }) {
       }
     });
     return {
-      schema: 3,
+      schema: manifest.schema,
       deletionJournalApplied: true,
       sessionsRevoked: true,
       journalOutput,

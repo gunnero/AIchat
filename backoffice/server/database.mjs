@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { linkTable } from "./platform-schema.mjs";
 export function openDatabase(path) {
   const db = new DatabaseSync(path);
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -43,10 +44,14 @@ export function openDatabase(path) {
         INSERT INTO schema_version VALUES(2);
       `);
     });
-  } else if (version !== 2) {
+  } else if (version !== 2 && version !== 3) {
     db.close();
     throw new Error("Unsupported database schema");
   }
+  if (version < 3)
+    transaction(db, () => {
+      db.exec(linkTable + "INSERT INTO schema_version VALUES(3);");
+    });
   return db;
 }
 export function transaction(db, fn) {

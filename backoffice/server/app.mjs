@@ -1036,10 +1036,83 @@ export async function buildServer({
     async () =>
       await db
         .prepare(
-          "SELECT id,project_id,prompt_id,name,version,source_ref,checksum,created_at FROM prompt_versions ORDER BY name,version DESC",
+          "SELECT p.id,p.project_id,p.prompt_id,p.name,p.version,p.source_ref,p.checksum,p.created_at,CASE WHEN l.version_id IS NULL THEN 'local' ELSE 'platform' END AS source_kind,l.provider_prompt_id,l.version_policy FROM prompt_versions p LEFT JOIN platform_prompt_links l ON l.version_id=p.id ORDER BY p.name,p.version DESC",
         )
         .all(),
   );
+  app.post(P + "/projects/:id/prompts/link", async (r) => {
+    const projectId = z.uuid().parse(r.params.id),
+      v = z
+        .object({
+          name: text(80),
+          providerPromptId: z
+            .string()
+            .trim()
+            .regex(/^pmpt_[A-Za-z0-9_-]{3,180}$/),
+        })
+        .strict()
+        .parse(r.body);
+    return transaction(db, async () => {
+      await stillAuthorized(r);
+      const project = await db
+        .prepare("SELECT connection_id FROM projects WHERE id=?")
+        .get(projectId);
+      if (!project) fail(404, "Projektet findes ikke.");
+      if (!project.connection_id)
+        fail(400, "Tilføj en API-forbindelse til projektet først.");
+      const prior = await db
+        .prepare(
+          "SELECT version_id FROM platform_prompt_links WHERE project_id=? AND provider_prompt_id=?",
+        )
+        .get(projectId, v.providerPromptId);
+      if (prior)
+        return {
+          id: prior.version_id,
+          projectId,
+          linked: true,
+          created: false,
+        };
+      if (
+        await db
+          .prepare(
+            "SELECT id FROM prompt_versions WHERE project_id=? AND name=? COLLATE NOCASE",
+          )
+          .get(projectId, v.name)
+      )
+        fail(409, "Navnet bruges allerede i projektet. Vælg et andet navn.");
+      const id = randomUUID();
+      await db
+        .prepare("INSERT INTO prompt_versions VALUES(?,?,?,?,?,?,?,?,?)")
+        .run(
+          id,
+          projectId,
+          randomUUID(),
+          v.name,
+          1,
+          seal(vaultKey, "", "prompt:" + id),
+          v.providerPromptId,
+          digest(
+            JSON.stringify({
+              kind: "openai_prompt",
+              id: v.providerPromptId,
+              versionPolicy: "default",
+            }),
+          ),
+          stamp(),
+        );
+      await db
+        .prepare("INSERT INTO platform_prompt_links VALUES(?,?,?,?,?)")
+        .run(
+          id,
+          projectId,
+          project.connection_id,
+          v.providerPromptId,
+          "default",
+        );
+      await audit(r.adminId, "prompt.linked", id);
+      return { id, projectId, linked: true, created: true };
+    });
+  });
   app.post(
     P + "/projects/:id/prompts/import",
     { bodyLimit: MAX_IMPORT_BYTES },
@@ -1119,6 +1192,18 @@ export async function buildServer({
       if (r.session) await stillAuthorized(r);
       if (
         v.promptId &&
+        (await db
+          .prepare(
+            "SELECT l.version_id FROM platform_prompt_links l JOIN prompt_versions p ON p.id=l.version_id WHERE p.project_id=? AND p.prompt_id=?",
+          )
+          .get(v.projectId, promptId))
+      )
+        fail(
+          400,
+          "Denne prompt administreres i OpenAI Platform. Redigér den der.",
+        );
+      if (
+        v.promptId &&
         !(await db
           .prepare(
             "SELECT id FROM prompt_versions WHERE project_id=? AND prompt_id=?",
@@ -1163,9 +1248,19 @@ export async function buildServer({
     const id = z.uuid().parse(r.params.id),
       p = await db.prepare("SELECT * FROM prompt_versions WHERE id=?").get(id);
     if (!p) fail(404, "Prompten findes ikke.");
+    const link = await db
+      .prepare(
+        "SELECT provider_prompt_id,version_policy FROM platform_prompt_links WHERE version_id=?",
+      )
+      .get(id);
     await audit(r.adminId, "prompt.viewed", id);
+    if (link) {
+      const { instructions, ...metadata } = p;
+      return { ...metadata, source_kind: "platform", ...link };
+    }
     return {
       ...p,
+      source_kind: "local",
       instructions: unseal(vaultKey, p.instructions, "prompt:" + id),
     };
   });

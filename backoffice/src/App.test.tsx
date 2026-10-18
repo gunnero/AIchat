@@ -464,11 +464,11 @@ test.each(["en", "da"] as const)(
 );
 
 test.each(["en", "da"] as const)(
-  "saving a connection opens its new app project and one-time prompt import (%s)",
+  "saving a connection opens prompt linking without asking for instructions (%s)",
   async (language) => {
     setLanguage(language);
     let created = false,
-      imported = false;
+      linked = false;
     const project = {
       id: "synthetic-project",
       name: "Synthetic connection",
@@ -481,16 +481,19 @@ test.each(["en", "da"] as const)(
       if (method === "GET") {
         if (path === "/projects") return created ? [project] : [];
         if (path === "/prompts")
-          return imported
+          return linked
             ? [
                 {
                   id: "synthetic-version",
                   project_id: project.id,
                   prompt_id: "synthetic-prompt",
-                  name: "Synthetic connection",
+                  name: project.name,
                   version: 1,
-                  source_ref: "",
+                  source_ref: "pmpt_synthetic",
                   checksum: "synthetic",
+                  source_kind: "platform",
+                  provider_prompt_id: "pmpt_synthetic",
+                  version_policy: "default",
                 },
               ]
             : [];
@@ -504,9 +507,14 @@ test.each(["en", "da"] as const)(
           projectCreated: true,
         };
       }
-      if (path === `/projects/${project.id}/prompts/import`) {
-        imported = true;
-        return { projectId: project.id, imported: 1, skipped: 0 };
+      if (path === `/projects/${project.id}/prompts/link`) {
+        linked = true;
+        return {
+          id: "synthetic-version",
+          projectId: project.id,
+          linked: true,
+          created: true,
+        };
       }
       throw new Error("Unexpected setup mutation");
     });
@@ -515,32 +523,36 @@ test.each(["en", "da"] as const)(
     await user.click(
       within(dialog).getByRole("button", { name: t("Kontrollér og gem") }),
     );
-    const importer = await screen.findByRole("dialog", {
-      name: t("Importér prompter"),
+    const linker = await screen.findByRole("dialog", {
+      name: t("Tilknyt OpenAI-prompt"),
     });
     expect(screen.queryByLabelText(t("API-nøgle"))).not.toBeInTheDocument();
-    expect(within(importer).getByLabelText(t("Navn på prompt"))).toHaveValue(
-      project.name,
-    );
+    expect(screen.queryByLabelText(t("Instruktioner"))).not.toBeInTheDocument();
+    expect(within(linker).getByLabelText(t("Navn"))).toHaveValue(project.name);
     await user.type(
-      within(importer).getByLabelText(t("Instruktioner")),
-      "Synthetic instructions",
+      within(linker).getByLabelText(t("OpenAI-prompt-ID")),
+      "pmpt_synthetic",
     );
     await user.click(
-      within(importer).getByRole("button", { name: t("Importér prompter") }),
+      within(linker).getByRole("button", { name: t("Tilknyt prompt") }),
     );
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    expect(screen.getByText("v1")).toBeInTheDocument();
+    const edit = screen.getByRole("link", { name: t("Redigér i OpenAI") });
+    expect(edit).toHaveAttribute("href", "https://platform.openai.com");
+    expect(
+      screen.queryByRole("button", { name: t("Se / ny version") }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: t("Importér prompter") }),
+    ).not.toBeInTheDocument();
     await user.selectOptions(
       screen.getByRole("combobox", { name: t("Sprog") }),
       language === "en" ? "da" : "en",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      t("Importeret: {imported}. Allerede tilføjet: {skipped}.")
-        .replace("{imported}", "1")
-        .replace("{skipped}", "0"),
+      t("Prompten er tilknyttet. Foretag ændringer i OpenAI Platform."),
     );
     expect(
       mocked.mock.calls.filter(
@@ -548,20 +560,12 @@ test.each(["en", "da"] as const)(
       ),
     ).toHaveLength(1);
     expect(
-      mocked.mock.calls.filter(([path]) => path.endsWith("/prompts/import")),
+      mocked.mock.calls.filter(([path]) => path.endsWith("/prompts/link")),
     ).toEqual([
       [
-        `/projects/${project.id}/prompts/import`,
+        `/projects/${project.id}/prompts/link`,
         "POST",
-        {
-          prompts: [
-            {
-              name: project.name,
-              instructions: "Synthetic instructions",
-              sourceRef: "",
-            },
-          ],
-        },
+        { name: project.name, providerPromptId: "pmpt_synthetic" },
         session.csrf,
       ],
     ]);

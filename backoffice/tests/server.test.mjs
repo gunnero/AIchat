@@ -178,6 +178,7 @@ test("all customer, project, prompt, connection and audit reads/writes require a
     "/connections/" + randomUUID() + "/rotate",
     "/connections/" + randomUUID() + "/project",
     "/projects/" + randomUUID() + "/prompts/import",
+    "/projects/" + randomUUID() + "/prompts/link",
   ])
     assert.equal((await f.req(path, "POST", {})).statusCode, 401);
 });
@@ -736,7 +737,7 @@ test("consistent database and vault backups restore encrypted records without th
   const manifest = JSON.parse(
     await readFile(join(destination, "manifest.json"), "utf8"),
   );
-  assert.equal(manifest.schema, 2);
+  assert.equal(manifest.schema, 3);
   for (const name of ["backoffice.sqlite", "vault.key"])
     assert.equal(
       manifest.files[name],
@@ -1047,6 +1048,7 @@ test("Customer registration gives only its own assigned project metadata and can
     "/invitations/" + signed.session.id + "/resend",
     "/connections/" + randomUUID() + "/project",
     "/projects/" + projectId + "/prompts/import",
+    "/projects/" + projectId + "/prompts/link",
   ])
     assert.equal(
       (await f.req(path, "POST", {}, signed.headers)).statusCode,
@@ -1256,7 +1258,7 @@ test("schema 1 migration preserves the existing first Admin and blocks owner dem
   let db = openDatabase(path);
   assert.equal(
     db.prepare("SELECT max(version) AS n FROM schema_version").get().n,
-    2,
+    3,
   );
   let row = db.prepare("SELECT * FROM admins WHERE id=?").get(id);
   assert.equal(row.protected, 1);
@@ -1497,5 +1499,120 @@ test("one-time prompt imports preserve encrypted exact content and provenance, s
     (await f.req(`/projects/${randomUUID()}/prompts/import`, "POST", body))
       .statusCode,
     404,
+  );
+});
+
+test("Platform prompt links need no instructions, stay scoped/idempotent and cannot be edited as app instructions", async (t) => {
+  let checks = 0;
+  const f = await fixture(t, {
+    providerCheck: async () => {
+      checks++;
+      return "ok";
+    },
+  });
+  await f.owner();
+  const connectionId = await f.connection(),
+    db = f.app.db;
+  const projectId = db
+    .prepare("SELECT id FROM projects WHERE connection_id=?")
+    .get(connectionId).id;
+  const other = await f.project("Second app project", connectionId),
+    unconnected = await f.project("No connection");
+  const path = `/projects/${projectId}/prompts/link`,
+    payload = {
+      name: "Platform assistant",
+      providerPromptId: "pmpt_synthetic",
+    };
+  assert.equal(
+    (await f.req(path, "POST", payload, { "x-csrf-token": "bad" })).statusCode,
+    403,
+  );
+  const results = await Promise.all([
+    f.req(path, "POST", payload),
+    f.req(path, "POST", payload),
+  ]);
+  assert.ok(results.every((r) => r.statusCode === 200));
+  assert.equal(results.filter((r) => r.json().created).length, 1);
+  assert.equal(new Set(results.map((r) => r.json().id)).size, 1);
+  const id = results[0].json().id;
+  const stored = db.prepare("SELECT * FROM prompt_versions WHERE id=?").get(id);
+  assert.equal(unseal(f.vaultKey, stored.instructions, "prompt:" + id), "");
+  assert.equal(stored.source_ref, payload.providerPromptId);
+  const list = (await f.req("/prompts")).json().find((p) => p.id === id);
+  assert.equal(list.source_kind, "platform");
+  assert.equal(list.provider_prompt_id, payload.providerPromptId);
+  assert.equal(list.version_policy, "default");
+  assert.ok(!Object.hasOwn(list, "instructions"));
+  const detail = (await f.req("/prompts/" + id)).json();
+  assert.equal(detail.source_kind, "platform");
+  assert.ok(!Object.hasOwn(detail, "instructions"));
+  assert.equal(
+    (
+      await f.req("/prompts", "POST", {
+        projectId,
+        promptId: stored.prompt_id,
+        name: stored.name,
+        instructions: "Must not override Platform",
+        sourceRef: "",
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (await f.req(`/projects/${other}/prompts/link`, "POST", payload))
+      .statusCode,
+    200,
+  );
+  assert.equal(
+    (await f.req(`/projects/${unconnected}/prompts/link`, "POST", payload))
+      .statusCode,
+    400,
+  );
+  assert.equal(
+    (await f.req(`/projects/${randomUUID()}/prompts/link`, "POST", payload))
+      .statusCode,
+    404,
+  );
+  for (const providerPromptId of [
+    "proj_wrong",
+    "https://example.test/pmpt_x",
+    "pmpt_",
+    "pmpt_" + "x".repeat(181),
+  ])
+    assert.equal(
+      (await f.req(path, "POST", { ...payload, providerPromptId })).statusCode,
+      400,
+    );
+  for (const extra of [
+    { instructions: "Duplicate work" },
+    { version: "7" },
+    { connectionId: randomUUID() },
+  ])
+    assert.equal(
+      (await f.req(path, "POST", { ...payload, ...extra })).statusCode,
+      400,
+    );
+  assert.equal(
+    (
+      await f.req(path, "POST", {
+        ...payload,
+        providerPromptId: "pmpt_another",
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    db.prepare("SELECT count(*) AS n FROM platform_prompt_links").get().n,
+    2,
+  );
+  assert.equal(
+    checks,
+    1,
+    "saving a reference must not pretend to test prompt access",
+  );
+  assert.throws(() =>
+    db
+      .prepare("UPDATE projects SET connection_id=NULL WHERE id=?")
+      .run(projectId),
   );
 });

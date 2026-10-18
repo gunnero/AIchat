@@ -1,3 +1,5 @@
+> Historical import workflow: normal onboarding now links an OpenAI prompt ID, with editing kept in Platform. See [the current Platform-managed prompt workflow](platform-prompts.md). This backend format remains for compatibility/migration tooling; its import form is no longer the default app UI.
+
 # API connection and one-time instruction import
 
 Adding a verified API connection now creates a local app project with the connection's name and immediately opens **Import prompts**. The app does not create a new OpenAI Platform project or copy its remote project name. The administrator enters the existing OpenAI `proj_…` ID and its project key. Key encryption, fresh MFA, CSRF and fixed-endpoint validation remain enforced. The connection and its app project commit together; a failed connection check or failed project write leaves neither record behind.

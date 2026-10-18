@@ -700,6 +700,15 @@ pgtest(
       keep = await create(a, p);
     await save(a, p, c, "Deleted after the snapshot");
     await save(a, p, keep, "Surviving encrypted content");
+    await connectFixtureProject(p);
+    const linked = await req(
+      fixtures.admin,
+      `/backoffice/api/projects/${p.id}/prompts/link`,
+      "POST",
+      { name: "Restored linked assistant", providerPromptId: "pmpt_restored" },
+    );
+    assert.equal(linked.statusCode, 200);
+    const linkId = linked.json().id;
     const dir = await mkdtemp(join(tmpdir(), "ai-pg-restore-")),
       backup = join(dir, "backup"),
       journal = join(dir, "deletions.jsonl");
@@ -735,6 +744,16 @@ pgtest(
         journal,
       });
       assert.equal(result.deletionJournalApplied, true);
+      assert.equal(result.schema, 4);
+      assert.equal(
+        (
+          await restore.query(
+            "SELECT provider_prompt_id FROM platform_prompt_links WHERE version_id=$1",
+            [linkId],
+          )
+        ).rows[0].provider_prompt_id,
+        "pmpt_restored",
+      );
       assert.ok((await readFile(result.journalOutput, "utf8")).includes(c.id));
       await restore.transaction(async () => {
         await restore.query("SET LOCAL ROLE ai_owner");
@@ -1013,6 +1032,217 @@ pgtest(
       !(await req(admin, "/backoffice/api/audit")).body.includes(
         item.instructions,
       ),
+    );
+  },
+);
+
+async function connectFixtureProject(p) {
+  const id = randomUUID(),
+    now = new Date().toISOString();
+  await maintenance(async () => {
+    await q(
+      "INSERT INTO connections VALUES($1,'Synthetic connection','proj_synthetic','test',$2,'test',1,1,'ok',$3,$3,$3)",
+      [
+        id,
+        seal(key, "sk-proj-synthetic-not-sent-to-openai", "connection:" + id),
+        now,
+      ],
+    );
+    await q("UPDATE projects SET connection_id=$1 WHERE id=$2", [id, p.id]);
+  });
+  return id;
+}
+pgtest(
+  "PostgreSQL: Platform links are immutable, project-bound, private to Admins and preserve assigned chats",
+  async () => {
+    const { admin, main, a, p, other } = fixtures;
+    const connectionId = await connectFixtureProject(p),
+      old = await create(a, p);
+    await save(a, p, old);
+    const path = `/backoffice/api/projects/${p.id}/prompts/link`,
+      payload = {
+        name: "Linked assistant",
+        providerPromptId: "pmpt_synthetic",
+      };
+    assert.equal((await req(a, path, "POST", payload)).statusCode, 403);
+    const results = await Promise.all([
+      req(admin, path, "POST", payload),
+      req(main, path, "POST", payload),
+    ]);
+    assert.ok(results.every((r) => r.statusCode === 200));
+    assert.equal(results.filter((r) => r.json().created).length, 1);
+    const id = results[0].json().id;
+    assert.equal(results[1].json().id, id);
+    assert.deepEqual(
+      await q("SELECT * FROM platform_prompt_links WHERE version_id=$1", [id]),
+      [
+        {
+          version_id: id,
+          project_id: p.id,
+          connection_id: connectionId,
+          provider_prompt_id: payload.providerPromptId,
+          version_policy: "default",
+        },
+      ],
+    );
+    assert.equal(
+      (
+        await q(
+          "SELECT version_id FROM assignments WHERE customer_id=$1 AND project_id=$2",
+          [a.customerId, p.id],
+        )
+      )[0].version_id,
+      p.v,
+    );
+    await save(a, p, old, "Original pinned assignment still works");
+    const metadata = (await req(admin, "/backoffice/api/prompts/" + id)).json();
+    assert.equal(metadata.source_kind, "platform");
+    assert.ok(!Object.hasOwn(metadata, "instructions"));
+    assert.equal(
+      (
+        await req(admin, "/backoffice/api/prompts", "POST", {
+          projectId: p.id,
+          promptId: metadata.prompt_id,
+          name: metadata.name,
+          instructions: "Must not edit remote config",
+          sourceRef: "",
+        })
+      ).statusCode,
+      400,
+    );
+    const chat = openPostgres(uri("ai_chat"));
+    try {
+      await assert.rejects(
+        chat.query("SELECT * FROM platform_prompt_links"),
+        (e) => e.code === "42501",
+      );
+    } finally {
+      await chat.close();
+    }
+    await assert.rejects(
+      app.db.query(
+        "UPDATE platform_prompt_links SET provider_prompt_id='pmpt_override' WHERE version_id=$1",
+        [id],
+      ),
+      (e) => e.code === "42501",
+    );
+    await assert.rejects(
+      app.db.query("UPDATE projects SET connection_id=null WHERE id=$1", [
+        p.id,
+      ]),
+      (e) => e.code === "23503",
+    );
+    await assert.rejects(
+      app.db.query(
+        "INSERT INTO platform_prompt_links VALUES($1,$2,$3,'pmpt_cross','default')",
+        [other.v, other.id, connectionId],
+      ),
+      (e) => e.code === "23503",
+    );
+    await maintenance(() =>
+      q(
+        "UPDATE assignments SET version_id=$1 WHERE customer_id=$2 AND project_id=$3",
+        [id, a.customerId, p.id],
+      ),
+    );
+    assert.equal(
+      (
+        await req(a, url(p, old.id) + "/messages", "POST", {
+          text: "Old chat read-only",
+          requestId: randomUUID(),
+        })
+      ).statusCode,
+      409,
+    );
+    const next = await create(a, p);
+    await save(a, p, next, "Private saved message; live AI is still disabled");
+    for (const who of [admin, main])
+      assert.equal((await req(who, url(p, next.id))).statusCode, 403);
+    assert.ok(
+      !(await req(a, "/api/customer/projects")).body.includes("pmpt_synthetic"),
+    );
+  },
+);
+
+pgtest(
+  "PostgreSQL: additive schema 3 to 4 migration preserves MFA, owner protection, sessions, vault ciphertext and private history",
+  async () => {
+    const { a, p, main } = fixtures,
+      c = await create(a, p);
+    await save(a, p, c, "Migration persistence fixture");
+    const before = await q("SELECT * FROM admins ORDER BY id");
+    const sessions = await q("SELECT * FROM sessions ORDER BY hash");
+    const versions = await q("SELECT * FROM prompt_versions ORDER BY id");
+    await maintenance(async () => {
+      await q("DROP TABLE platform_prompt_links");
+      await q("DROP INDEX project_connection_binding");
+      await q("DELETE FROM schema_version WHERE version=4");
+    });
+    const { backupPostgres, restorePostgres } =
+      await import("../server/postgres-backup.mjs");
+    const { writeFile } = await import("node:fs/promises");
+    const dir = await mkdtemp(join(tmpdir(), "ai-schema3-backup-"));
+    const restore = openPostgres(process.env.TEST_RESTORE_DATABASE_URL);
+    try {
+      await writeFile(join(dir, "vault.key"), key, { mode: 0o600 });
+      const journal = join(dir, "deletions.jsonl");
+      await writeFile(journal, "", { mode: 0o600 });
+      const manifest = await backupPostgres({
+        databaseUrl: uri("ai_migrator"),
+        state: dir,
+        destination: join(dir, "backup"),
+      });
+      assert.equal(manifest.schema, 3);
+      await restore.transaction(async () => {
+        await restore.query("SET LOCAL ROLE ai_owner");
+        await restore.query(
+          "DROP SCHEMA IF EXISTS private CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION ai_owner",
+        );
+      });
+      const result = await restorePostgres({
+        databaseUrl: process.env.TEST_RESTORE_DATABASE_URL,
+        backup: join(dir, "backup"),
+        journal,
+      });
+      assert.equal(result.schema, 3);
+      assert.deepEqual(await migrate(restore), { schema: 4, imported: false });
+      assert.deepEqual(
+        (await restore.query("SELECT * FROM admins ORDER BY id")).rows,
+        before,
+      );
+      await restore.transaction(async () => {
+        await restore.query("SET LOCAL ROLE ai_owner");
+        assert.equal(
+          (
+            await restore.query(
+              "SELECT count(*) AS n FROM private.messages WHERE conversation_id=$1",
+              [c.id],
+            )
+          ).rows[0].n,
+          1,
+        );
+      });
+    } finally {
+      await restore.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+    assert.deepEqual(await migrate(owner), { schema: 4, imported: false });
+    assert.deepEqual(await migrate(owner), { schema: 4, imported: false });
+    assert.deepEqual(await q("SELECT * FROM admins ORDER BY id"), before);
+    assert.deepEqual(await q("SELECT * FROM sessions ORDER BY hash"), sessions);
+    assert.deepEqual(
+      await q("SELECT * FROM prompt_versions ORDER BY id"),
+      versions,
+    );
+    assert.equal((await req(a, url(p, c.id))).statusCode, 200);
+    assert.equal((await req(main, url(p, c.id))).statusCode, 403);
+    await assert.rejects(
+      app.db.query("UPDATE admins SET protected=0 WHERE id=$1", [main.id]),
+      (e) => e.code === "23514",
+    );
+    assert.equal(
+      (await q("SELECT count(*) AS n FROM platform_prompt_links"))[0].n,
+      0,
     );
   },
 );

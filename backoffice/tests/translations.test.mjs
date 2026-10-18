@@ -13,6 +13,7 @@ test("all Danish API messages and static UI text have translations, while user c
     "src/CustomerWorkspace.tsx",
     "src/SecurityConfirmation.tsx",
     "src/PromptImportForm.tsx",
+    "src/PlatformPromptForm.tsx",
     "src/main.tsx",
   ]) {
     const src = await readFile(new URL("../" + file, import.meta.url), "utf8");

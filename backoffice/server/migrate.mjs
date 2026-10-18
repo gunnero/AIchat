@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { openPostgres } from "./postgres.mjs";
+import { postgresUpgrade } from "./platform-schema.mjs";
 
 const tables = [
   "customers",
@@ -9,6 +10,7 @@ const tables = [
   "connections",
   "projects",
   "prompt_versions",
+  "platform_prompt_links",
   "assignments",
   "audit",
   "owner_identity",
@@ -25,10 +27,11 @@ export async function migrate(db, sqlitePath) {
     )
       throw new Error("SQLite integrity verification failed");
     if (
-      source.prepare("SELECT max(version) AS v FROM schema_version").get().v !==
-      2
+      ![2, 3].includes(
+        source.prepare("SELECT max(version) AS v FROM schema_version").get().v,
+      )
     )
-      throw new Error("Expected SQLite schema 2");
+      throw new Error("Expected legacy SQLite schema 2 or fixture schema 3");
   }
   try {
     return await db.transaction(async () => {
@@ -41,19 +44,29 @@ export async function migrate(db, sqlitePath) {
           throw new Error(
             "SQLite import requires an empty target database; existing data was preserved",
           );
-        if (
-          (await db.query("SELECT max(version) AS v FROM schema_version"))
-            .rows[0].v !== 3
-        )
-          throw new Error("Unsupported schema");
-        return { schema: 3, imported: false };
+        const version = (
+          await db.query("SELECT max(version) AS v FROM schema_version")
+        ).rows[0].v;
+        if (version === 3) await db.query(postgresUpgrade);
+        else if (version !== 4) throw new Error("Unsupported schema");
+        return { schema: 4, imported: false };
       }
       await db.query(
         await readFile(new URL("./schema.sql", import.meta.url), "utf8"),
       );
+      await db.query(postgresUpgrade);
       let records = 0;
       if (source)
         for (const table of tables) {
+          if (
+            table === "platform_prompt_links" &&
+            !source
+              .prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+              )
+              .get(table)
+          )
+            continue;
           const rows = source.prepare(`SELECT * FROM ${table}`).all();
           const keys = Object.keys(rows[0] || {});
           for (const row of rows)
@@ -82,7 +95,7 @@ export async function migrate(db, sqlitePath) {
         }
       // Session and in-progress setup/registration cookies are intentionally
       // invalidated once; enrolled credentials and pending invitations survive.
-      return { schema: 3, imported: !!source, records };
+      return { schema: 4, imported: !!source, records };
     });
   } finally {
     source?.close();
