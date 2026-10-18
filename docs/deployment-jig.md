@@ -6,6 +6,10 @@ The separate **persistent administrator backoffice** is now live at [https://ai.
 
 ## Administrator service deployment — 18 October 2026
 
+**Current backoffice release: `ad7ba8cba1447e6bbb606b8af17448411acd19c5`.** This follow-up lets an administrator prepare prompt versions before choosing the project's first API connection. Existing configured projects still cannot silently move to another connection, and the expanded regression test verifies existing customer assignments keep v1 when v2 is created. All four CI checks passed before activation; the 18 backend tests and existing app checks remain green. Archive SHA-256 `8ee2c176248b78e6960602fcccfd8d084c6096a4e737ece98e84533ceb6d57a1`; fresh consistent pre-update database/vault backup `/var/lib/ai-kundetypeassistent/backups/before-ad7ba8c`. The code symlink and non-secret revision metadata were updated and only `ai-backoffice` was restarted. The original `fa9fbc0` release remains for rollback; schema and private state were preserved. Public endpoint checks and all 45 build-file hashes were reverified over trusted HTTPS from `web01`; no additional hosting configuration changed.
+
+Initial installation record:
+
 - Source: `fa9fbc03141c57cf783e4540e90727325dc09aaf`, branch `codex/admin-backoffice`, [draft PR #70](https://github.com/gunnero/AIchat/pull/70), stacked on #60. Both app/backoffice push and PR CI checks passed before activation (18 backend tests, 25 existing behavior tests, four worker tests, builds/type checks and zero runtime advisories).
 - Execution: developer Mac → existing `web01` SSH relay → `jig.123url.dk`, root for scoped service/configuration work; package preparation ran as `igurl`. Runtime/state belong to the new non-login `ai-kundetype` account. No OpenAI key was copied from chat or added during deployment.
 - Code: `/opt/ai-kundetypeassistent/current` → `releases/fa9fbc03141c57cf783e4540e90727325dc09aaf`. Root-owned code is read-only to the runtime. `/opt/ai-kundetypeassistent/runtime` is the isolated official Node 24.22.0 Linux x64 runtime; archive SHA-256 `cc2f601cee82d9a5a233302fe307abc600727035fd7d2c3a3571755989e95008` was checked locally and on jig.
