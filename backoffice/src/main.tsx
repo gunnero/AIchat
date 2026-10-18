@@ -874,19 +874,21 @@ export function App() {
                     <div className="card-heading">
                       <div>
                         <h3>{p.name}</h3>
-                        <span className="pill">
-                          {p.enabled ? t("Aktivt") : t("På pause")}
-                        </span>
-                        <span
-                          className="project-color-badge"
-                          data-project-color={projectColor(p.color)}
-                        >
-                          {t(
-                            projectColors.find(
-                              (color) => color.id === projectColor(p.color),
-                            )!.label,
-                          )}
-                        </span>
+                        <div className="project-card-meta">
+                          <span className="pill">
+                            {p.enabled ? t("Aktivt") : t("På pause")}
+                          </span>
+                          <span
+                            className="project-color-badge"
+                            data-project-color={projectColor(p.color)}
+                          >
+                            {t(
+                              projectColors.find(
+                                (color) => color.id === projectColor(p.color),
+                              )!.label,
+                            )}
+                          </span>
+                        </div>
                       </div>
                       <button
                         className="text-button"
