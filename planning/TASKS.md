@@ -139,3 +139,17 @@ Added after the client meeting on 18 October 2026. AK-059 is the synthetic proto
 | [AK-060 — Enforce project memberships and pinned conversation routing](https://github.com/gunnero/AIchat/issues/62) | P0 | AK-015, AK-016, AK-020, AK-023 |
 | [AK-061 — Import and version project prompts in the application](https://github.com/gunnero/AIchat/issues/63) | P0 | AK-010, AK-011, AK-015 |
 | [AK-062 — Verify project isolation and reassignment end to end](https://github.com/gunnero/AIchat/issues/64) | P0 | AK-060, AK-061, AK-027, AK-034, AK-035 |
+
+## Real administrator backoffice — 18 October 2026
+
+[Architecture and operating boundary](../docs/backoffice.md). The real staff service is separate from the unchanged synthetic customer demo.
+
+| Task | Priority | Dependencies |
+| --- | --- | --- |
+| [AK-063 — Build the persistent administrator backoffice and staff sign-in](https://github.com/gunnero/AIchat/issues/65) | P0 | AK-002, AK-004, AK-009 |
+| [AK-064 — Implement encrypted project API connections and safe key replacement](https://github.com/gunnero/AIchat/issues/66) | P0 | AK-063 |
+| [AK-065 — Persist backoffice customers, projects and immutable prompt versions](https://github.com/gunnero/AIchat/issues/67) | P0 | AK-063 |
+| [AK-066 — Deploy and verify the isolated administrator service on jig](https://github.com/gunnero/AIchat/issues/68) | P0 | AK-063, AK-064, AK-065 |
+| [AK-067 — Complete staff invitations, roles and verified recovery before customer pilot](https://github.com/gunnero/AIchat/issues/69) | P0 | AK-063, AK-066 |
+
+| [AK-068 — Add protected Admin/Customer identities and bilingual invitation onboarding](https://github.com/gunnero/AIchat/issues/71) | P0 | AK-063, AK-065, AK-066 |

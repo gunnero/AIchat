@@ -1,17 +1,17 @@
 # AI - Kundetypeassistent
 
-Planning baseline, 16 October 2026. Canonical task status lives in the [GitHub roadmap](https://github.com/gunnero/AIchat/issues/1) for `gunnero/AIchat`. The [local task index](TASKS.md) links to all 62 tasks.
+Planning baseline, 16 October 2026. Canonical task status lives in the [GitHub roadmap](https://github.com/gunnero/AIchat/issues/1) for `gunnero/AIchat`. The [local task index](TASKS.md) links to all 68 tasks.
 
 ## Agreed direction
 
 - Individual customer accounts; payment happens through an external service.
 - Helle invites customers, assigns a package and controls access and expiry.
 - Each customer can access multiple projects, with a specific prompt version assigned by Helle in each project. The app manages these assignments; Platform-created configuration is an import source. Shared project membership never shares private chats.
-- Customers activate their own identity. Email links are the initial sign-in direction; administrator MFA is required.
+- Customers activate their own identity. The 18 October account update selects username/email plus password and required TOTP for both Admin and Customer; email invitation links enroll the account.
 - Private chat histories belong to the customer. Normal administrators cannot read unshared chats or impersonate customers.
 - Customers may explicitly share a fixed snapshot with Helle and revoke future access. Future messages remain private.
 - Packages expose a simple customer allowance. Internal usage accounting records tokens and estimated provider costs separately.
-- The client approved option 1 and requested a black-and-white palette on 18 October 2026; retain the layout and use neutral gray accents. Danish customer UI; English engineering tasks.
+- The client approved option 1 and requested a black-and-white palette on 18 October 2026; retain the layout and use neutral gray accents. English/Danish backoffice and invitation emails; Danish customer UI, with a bilingual account landing screen. English engineering tasks.
 - Approved instructions and knowledge define assistant behaviour. Customer conversations are not automatically used as shared knowledge or training material.
 
 ## First reviewable build
@@ -53,3 +53,8 @@ The proposals contain the supporting OpenAI, EDPB and OWASP references. Recheck 
 ## Meeting update — projects and prompts
 
 AK-059 implements the synthetic assignment/project-switching prototype. AK-060–062 add the production memberships, portable prompt import and isolation verification. See [the specification](../docs/projects-and-prompts.md). Existing schema, authorization, history, usage, gateway and workflow tasks now include this scope. The demo retains a shared per-customer allowance across projects; per-project charging remains an open business decision.
+
+
+Administrator build update, 18 October 2026: AK-063–067 add a real persistent backoffice, staff password/TOTP authentication, encrypted client-owned provider connections, persistent customer/project/prompt management, isolated hosting, and the remaining staff/recovery work. The customer-facing demo stays synthetic. See [backoffice architecture and boundaries](../docs/backoffice.md). The structured backlog now contains 68 tasks.
+
+AK-068 adds the approved protected first Admin, ordinary Admin/Customer identity roles, invitation registration and bilingual account/backoffice flows. It expands the existing identity foundation without launching AI chat or private customer history.

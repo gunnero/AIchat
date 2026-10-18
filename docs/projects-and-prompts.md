@@ -2,6 +2,8 @@
 
 Meeting update, 18 October 2026: customer access and prompt assignments are managed in this application. The intended source configuration is created in OpenAI Platform. A customer may access multiple projects, with one explicitly selected prompt version per project. Project names do not change the approved black-and-white palette.
 
+Later on 18 October the user requested a **real backoffice first**. The separate `backoffice/` service persists administrator-owned connections, projects, immutable encrypted prompt versions and customer assignments. Keys are entered by the owner through authenticated UI; manual instruction import is supported without promising saved-library synchronization. The synthetic demo described below remains unchanged. [Implementation, limits and operating runbook](backoffice.md).
+
 ## Example
 
 | Customer | Project | Assigned prompt |
