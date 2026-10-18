@@ -45,6 +45,13 @@ def main():
             if self.headers.get('Host') != LOCAL_HOST or self.headers.get('Origin') not in (None, LOCAL_ORIGIN):
                 self.send_error(403)
                 return
+            if not args.local and self.command == 'GET' and self.path.split('?')[0] in ('/backoffice', '/backoffice/') and self.path != '/backoffice/?setup=1':
+                self.send_response(302)
+                self.send_header('Location', 'https://ai.igurl.dk/backoffice/')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
             setup = self.path.split('?')[0] == '/backoffice/api/setup'
             if '/api/' in self.path and not setup and not args.local:
                 self.send_error(404)
