@@ -456,6 +456,30 @@ td code {
   gap: 15px;
   flex-wrap: wrap;
 }
+.staff-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.staff-actions .button {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.staff-actions svg {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .staff-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .staff-actions .button {
+    justify-content: flex-start;
+  }
+}
 .pill {
   display: inline-block;
   font-size: 13px;

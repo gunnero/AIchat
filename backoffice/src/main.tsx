@@ -947,20 +947,30 @@ export function App() {
                     <td>Admin</td>
                     <td>{statusText(a.status)}</td>
                     <td>
-                      <button
-                        className="text-button"
-                        onClick={() => setModal({ type: "staff", value: a })}
+                      <div
+                        className="staff-actions"
+                        role="group"
+                        aria-label={t("Handling") + " · " + a.name}
                       >
-                        {t("Administrér")}
-                      </button>
-                      <button
-                        className="text-button"
-                        onClick={() =>
-                          setModal({ type: "staff-workspace", value: a })
-                        }
-                      >
-                        {t("Tildel assistenter")}
-                      </button>
+                        <button
+                          type="button"
+                          className="button secondary"
+                          onClick={() => setModal({ type: "staff", value: a })}
+                        >
+                          <UsersIcon size={18} aria-hidden="true" />
+                          {t("Administrér")}
+                        </button>
+                        <button
+                          type="button"
+                          className="button primary"
+                          onClick={() =>
+                            setModal({ type: "staff-workspace", value: a })
+                          }
+                        >
+                          <SquaresFourIcon size={18} aria-hidden="true" />
+                          {t("Tildel assistenter")}
+                        </button>
+                      </div>
                       {a.status === "pending" && (
                         <InviteActions
                           accountId={a.id}
