@@ -9,6 +9,19 @@ test("all Danish API messages and static UI text have translations, while user c
   for (const file of [
     "server/app.mjs",
     "server/accounts.mjs",
+    "server/account-area.mjs",
+    "server/customer.mjs",
+    "server/usage.mjs",
+    "src/CustomerWorkspace.tsx",
+    "src/SecurityConfirmation.tsx",
+    "src/AuthenticatorSetup.tsx",
+    "src/AccountPanel.tsx",
+    "src/UsagePage.tsx",
+    "src/ProjectColorPicker.tsx",
+    "src/project-colors.ts",
+    "src/Dialog.tsx",
+    "src/PromptImportForm.tsx",
+    "src/PlatformPromptForm.tsx",
     "src/main.tsx",
   ]) {
     const src = await readFile(new URL("../" + file, import.meta.url), "utf8");

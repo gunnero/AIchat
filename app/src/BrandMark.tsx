@@ -5,7 +5,7 @@ export function BrandMark({
 }) {
   return (
     <span className={className} aria-hidden="true">
-      <img src="/brand-mark.png" alt="" />
+      <img src={import.meta.env.BASE_URL + "brand-mark.png"} alt="" />
     </span>
   );
 }

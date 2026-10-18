@@ -3,11 +3,27 @@ import { resolve, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { backupPostgres } from "./postgres-backup.mjs";
 process.umask(0o077);
 const state = resolve(process.env.STATE_DIR || ".state");
 const destination = resolve(process.argv[2] || "");
 if (!process.argv[2] || destination === state)
   throw new Error("Specify a new private backup directory");
+if (process.env.BACKUP_DATABASE_URL) {
+  await backupPostgres({
+    databaseUrl: process.env.BACKUP_DATABASE_URL,
+    state,
+    destination,
+  });
+  console.log(
+    "Private PostgreSQL backup completed with vault and deletion ledger.",
+  );
+  process.exit(0);
+}
+if (process.env.LEGACY_SQLITE_BACKUP !== "1")
+  throw new Error(
+    "BACKUP_DATABASE_URL is required; legacy SQLite backups require explicit opt-in",
+  );
 await mkdir(destination, { mode: 0o700 });
 const db = new DatabaseSync(join(state, "backoffice.sqlite"));
 db.prepare("VACUUM INTO ?").run(join(destination, "backoffice.sqlite"));

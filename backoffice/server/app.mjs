@@ -4,7 +4,7 @@ import rateLimit from "@fastify/rate-limit";
 import serveStatic from "@fastify/static";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { openDatabase, transaction } from "./database.mjs";
+import { openDatabase, asyncTransaction as transaction } from "./database.mjs";
 import {
   token,
   digest,
@@ -20,10 +20,13 @@ import {
 } from "./security.mjs";
 import { installAccounts, username } from "./accounts.mjs";
 import { translate } from "./messages.mjs";
+import { installCustomer } from "./customer.mjs";
+import { installAccountArea } from "./account-area.mjs";
+import { installUsage } from "./usage.mjs";
 import { checkOpenAI } from "./provider.mjs";
-
+import { limiterIdentity } from "./client-address.mjs";
+import { promptImport, MAX_IMPORT_BYTES } from "./prompt-bundle.mjs";
 const P = "/backoffice/api",
-  SID = "bo_session",
   SETUP = "bo_setup";
 const text = (max) => z.string().trim().min(1).max(max);
 const email = z
@@ -32,7 +35,10 @@ const email = z
   .transform((s) => s.toLowerCase());
 const code = z.string().regex(/^\d{6}$/);
 const password = z.string().min(14).max(256);
-const projectRef = z.string().regex(/^proj_[A-Za-z0-9_-]{3,100}$/);
+const projectRef = z
+  .string()
+  .trim()
+  .regex(/^proj_[A-Za-z0-9_-]{3,100}$/);
 const keyInput = z
   .string()
   .min(25)
@@ -57,6 +63,16 @@ const projectInput = z
     description: z.string().trim().max(1000),
     connectionId: z.uuid().nullable(),
     enabled: z.boolean(),
+    color: z
+      .union([
+        z.enum(["black", "yellow", "purple", "green"]),
+        z
+          .string()
+          .length(7)
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .transform((v) => v.toLowerCase()),
+      ])
+      .optional(),
   })
   .strict();
 const connectionInput = z
@@ -68,69 +84,84 @@ const connectionInput = z
   })
   .strict();
 class Problem extends Error {
-  constructor(status, message) {
+  constructor(status, message, code) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
-const fail = (status, message) => {
-  throw new Problem(status, message);
+const fail = (status, message, code) => {
+  throw new Problem(status, message, code);
 };
-
 export async function buildServer({
   dbPath = ":memory:",
+  database,
+  customerDatabase,
+  customerRoot,
+  deletionJournal,
   vaultKey,
   origin,
   localOrigin = "http://127.0.0.1:8765",
+  apacheProxy = false,
   secureCookies = true,
   staticRoot,
   clock = Date.now,
   providerCheck = checkOpenAI,
+  reportReader,
   bootstrapHash,
   passwordCheck = verifyPassword,
   mailer = async () => false,
 }) {
   if (!Buffer.isBuffer(vaultKey) || vaultKey.length !== 32)
     throw new Error("A 32-byte vault key is required");
+  if (typeof apacheProxy !== "boolean")
+    throw new Error("Invalid Apache proxy configuration");
   const configured = new URL(origin);
   if (
     configured.origin !== origin ||
     (!secureCookies && origin !== localOrigin)
   )
     throw new Error("Invalid service origin/cookie configuration");
+  const SID = secureCookies ? "__Host-ai_session" : "ai_session_local";
   const app = Fastify({
     logger: false,
+    rewriteUrl: (r) =>
+      r.url.replace(
+        /^\/api\/(auth\/(?:login|session|logout|password|reauth))(?=\?|$)/,
+        "/backoffice/api/$1",
+      ),
     bodyLimit: 96 * 1024,
     trustProxy: false,
     requestTimeout: 20000,
   });
-  const db = openDatabase(dbPath);
+  const db = database || openDatabase(dbPath);
   app.decorate("db", db);
   app.addHook("onClose", () => db.close());
   await app.register(cookie);
-  // Use the socket identity, not user-controlled proxy/IP headers. Per-account
-  // failure limits below persist across process restarts.
+  // Enable only behind the matching Apache sanitization contract. Persistent
+  // per-account failures remain independent of the visitor's network address.
   await app.register(rateLimit, {
     max: 240,
     timeWindow: "1 minute",
-    keyGenerator: (r) => r.socket.remoteAddress || "local",
+    keyGenerator: (r) => limiterIdentity(r, apacheProxy),
   });
   const dummyPassword = await hashPassword(token());
   const stamp = () => new Date(clock()).toISOString();
-  const audit = (admin, action, target) =>
-    db
+  const audit = async (admin, action, target) =>
+    await db
       .prepare("INSERT INTO audit VALUES(?,?,?,?,?)")
       .run(randomUUID(), admin, action, target, stamp());
   const cookieOptions = {
     httpOnly: true,
     secure: secureCookies,
     sameSite: "strict",
-    path: "/backoffice",
+    path: "/",
     maxAge: 12 * 60 * 60,
   };
-  const ownerExists = () => !!db.prepare("SELECT id FROM admins LIMIT 1").get();
-  const localSetup = (r) =>
-    !ownerExists() &&
+  const ownerExists = async () =>
+    !!(await db.prepare("SELECT id FROM admins LIMIT 1").get());
+  const localSetup = async (r) =>
+    !(await ownerExists()) &&
     typeof r.headers["x-setup-token"] === "string" &&
     typeof bootstrapHash === "string" &&
     equal(digest(r.headers["x-setup-token"]), bootstrapHash) &&
@@ -140,7 +171,7 @@ export async function buildServer({
       (h) => h.startsWith("x-forwarded-") || h === "forwarded",
     ) &&
     (!r.headers.origin || r.headers.origin === localOrigin);
-  const consumeOtp = (admin, value) => {
+  const consumeOtp = async (admin, value) => {
     const step = otpStep(
       unseal(vaultKey, admin.mfa_secret, "mfa:" + admin.id),
       value,
@@ -148,36 +179,38 @@ export async function buildServer({
     );
     if (step === null || step <= admin.last_step) return false;
     return (
-      db
-        .prepare(
-          "UPDATE admins SET last_step=? WHERE id=? AND last_step<? AND password_hash=? AND status='active'",
-        )
-        .run(step, admin.id, step, admin.password_hash).changes === 1
+      (
+        await db
+          .prepare(
+            "UPDATE admins SET last_step=? WHERE id=? AND last_step<? AND password_hash=? AND status='active'",
+          )
+          .run(step, admin.id, step, admin.password_hash)
+      ).changes === 1
     );
   };
-  const activeAccount = (id) =>
-    db
+  const activeAccount = async (id) =>
+    await db
       .prepare(
-        `SELECT admins.* FROM admins LEFT JOIN customers ON customers.id=admins.customer_id
+        `SELECT admins.*,(SELECT display_name FROM account_profiles WHERE account_id=admins.id) AS display_name FROM admins LEFT JOIN customers ON customers.id=admins.customer_id
     WHERE admins.id=? AND admins.status='active' AND (admins.role='admin' OR (customers.status='active' AND (customers.expires IS NULL OR customers.expires>=?)))`,
       )
       .get(id, new Date(clock()).toISOString().slice(0, 10));
   const sessionDto = (a, sid) => ({
     id: a.id,
-    name: a.name,
+    name: a.display_name || a.name,
     email: a.email,
     username: a.username,
     locale: a.locale,
     role: a.role === "admin" ? "Admin" : "Customer",
     csrf: csrfFor(vaultKey, sid),
   });
-  const stillAuthorized = (r) => {
-    const live = db
+  const stillAuthorized = async (r) => {
+    const live = await db
       .prepare("SELECT * FROM sessions WHERE hash=?")
       .get(r.session.hash);
     if (
       !live ||
-      !activeAccount(live.admin_id) ||
+      !(await activeAccount(live.admin_id)) ||
       live.expires <= clock() ||
       live.seen + 30 * 60 * 1000 <= clock()
     )
@@ -185,7 +218,11 @@ export async function buildServer({
   };
   const fresh = (r) => {
     if (clock() - r.session.mfa_at > 10 * 60 * 1000)
-      fail(403, "Bekræft en ny kode fra din authenticator først.");
+      fail(
+        403,
+        "Bekræft en ny kode fra din authenticator først.",
+        "reauth_required",
+      );
   };
   app.addHook("onRequest", async (r, reply) => {
     reply.headers({
@@ -197,11 +234,16 @@ export async function buildServer({
       "Content-Security-Policy":
         "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
     });
-    const path = r.url.split("?")[0];
-    if (!path.startsWith(P + "/")) return;
+    const path = r.routeOptions.url || r.url.split("?")[0];
+    if (
+      !path.startsWith(P + "/") &&
+      !path.startsWith("/api/customer/") &&
+      !["/api/account", "/api/account/profile"].includes(path)
+    )
+      return;
     const setup = path === P + "/setup";
     if (setup) {
-      if (!localSetup(r)) fail(404, "Siden findes ikke.");
+      if (!(await localSetup(r))) fail(404, "Siden findes ikke.");
       return;
     }
     if (
@@ -221,19 +263,25 @@ export async function buildServer({
     const sid = r.cookies[SID];
     const session =
       sid &&
-      db
+      (await db
         .prepare(
-          "SELECT sessions.*,admins.name,admins.email,admins.username,admins.role,admins.locale,admins.customer_id FROM sessions JOIN admins ON admins.id=sessions.admin_id WHERE hash=?",
+          "SELECT sessions.*,admins.id AS id,COALESCE(account_profiles.display_name,admins.name) AS name,admins.email,admins.username,admins.role,admins.locale,admins.customer_id FROM sessions JOIN admins ON admins.id=sessions.admin_id LEFT JOIN account_profiles ON account_profiles.account_id=admins.id WHERE hash=?",
         )
-        .get(digest(sid));
+        .get(digest(sid)));
     if (
       !session ||
-      !activeAccount(session.admin_id) ||
+      !(await activeAccount(session.admin_id)) ||
       session.expires <= clock() ||
       session.seen + 30 * 60 * 1000 <= clock()
     ) {
-      if (sid) db.prepare("DELETE FROM sessions WHERE hash=?").run(digest(sid));
+      if (sid)
+        await db.prepare("DELETE FROM sessions WHERE hash=?").run(digest(sid));
       reply.clearCookie(SID, cookieOptions);
+      reply.clearCookie("bo_session", {
+        ...cookieOptions,
+        path: "/backoffice",
+      });
+      reply.clearCookie("bo_session", cookieOptions);
       fail(401, "Log ind for at fortsætte.");
     }
     const common = [
@@ -245,7 +293,9 @@ export async function buildServer({
     if (
       session.role !== "admin" &&
       !common.some((p) => path === P + p) &&
-      path !== P + "/customer/home"
+      !["/api/account", "/api/account/profile"].includes(path) &&
+      path !== P + "/customer/home" &&
+      !path.startsWith("/api/customer/")
     )
       fail(403, "Adgang nægtet.");
     if (session.role === "admin" && path === P + "/customer/home")
@@ -258,14 +308,45 @@ export async function buildServer({
       !equal(r.headers["x-csrf-token"], csrfFor(vaultKey, sid))
     )
       fail(403, "Anmodningen blev afvist. Genindlæs siden.");
-    db.prepare("UPDATE sessions SET seen=? WHERE hash=?").run(
-      clock(),
-      session.hash,
-    );
+    // Background membership checks must not keep an unattended session alive.
+    if (!(r.method === "GET" && path === "/api/customer/projects"))
+      await db
+        .prepare("UPDATE sessions SET seen=? WHERE hash=?")
+        .run(clock(), session.hash);
+  });
+  const customer = customerDatabase
+    ? installCustomer(app, {
+        db: customerDatabase,
+        vaultKey,
+        fail,
+        clock,
+        deletionJournal,
+      })
+    : null;
+  app.addHook("onClose", async () => {
+    await customerDatabase?.close();
   });
   app.addHook("onSend", async (r, reply, payload) => {
     if (
-      r.url.startsWith(P + "/") &&
+      [200, 304].includes(reply.statusCode) &&
+      ["GET", "HEAD"].includes(r.method) &&
+      /^\/backoffice\/assets\/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\.(?:js|css|woff2?)$/.test(
+        r.url.split("?")[0],
+      )
+    )
+      reply.header("Cache-Control", "public, max-age=31536000, immutable");
+    if (
+      reply.statusCode < 400 &&
+      r.session &&
+      ![P + "/auth/logout", P + "/auth/password"].includes(r.routeOptions.url)
+    )
+      await stillAuthorized(r);
+    if (reply.statusCode < 400 && r.privateProject && customer)
+      await customer.checkAccess(r);
+    if (
+      (r.url.startsWith(P + "/") ||
+        r.url.startsWith("/api/customer/") ||
+        r.url.startsWith("/api/account")) &&
       reply.getHeader("content-type")?.includes("application/json") &&
       typeof payload === "string"
     ) {
@@ -283,7 +364,20 @@ export async function buildServer({
   });
   app.setErrorHandler((error, r, reply) => {
     if (error instanceof Problem)
-      return reply.code(error.status).send({ message: error.message });
+      return reply.code(error.status).send({
+        message: error.message,
+        ...(error.code ? { code: error.code } : {}),
+      });
+    if (
+      error instanceof z.ZodError &&
+      r.method === "POST" &&
+      r.routeOptions.url === P + "/connections" &&
+      error.issues.some((issue) => issue.path[0] === "projectRef")
+    )
+      return reply.code(400).send({
+        code: "invalid_project_id",
+        message: "Indsæt projektets ID fra OpenAI. Det starter med proj_.",
+      });
     if (error instanceof z.ZodError)
       return reply.code(400).send({
         message:
@@ -291,6 +385,7 @@ export async function buildServer({
       });
     if (
       error.code?.startsWith("SQLITE_CONSTRAINT") ||
+      ["23505", "23503", "23514"].includes(error.code) ||
       (Number.isInteger(error.errcode) && (error.errcode & 255) === 19)
     )
       return reply.code(409).send({
@@ -313,12 +408,16 @@ export async function buildServer({
   app.get(P + "/setup", async (r, reply) => {
     const secret = newOtpSecret(),
       sid = token();
-    db.prepare("DELETE FROM setup_sessions WHERE expires<=?").run(clock());
-    db.prepare("INSERT INTO setup_sessions VALUES(?,?,?)").run(
-      digest(sid),
-      seal(vaultKey, secret, "setup:" + digest(sid)),
-      clock() + 10 * 60 * 1000,
-    );
+    await db
+      .prepare("DELETE FROM setup_sessions WHERE expires<=?")
+      .run(clock());
+    await db
+      .prepare("INSERT INTO setup_sessions VALUES(?,?,?)")
+      .run(
+        digest(sid),
+        seal(vaultKey, secret, "setup:" + digest(sid)),
+        clock() + 10 * 60 * 1000,
+      );
     reply.setCookie(SETUP, sid, {
       httpOnly: true,
       secure: false,
@@ -326,16 +425,17 @@ export async function buildServer({
       path: P + "/setup",
       maxAge: 600,
     });
+    const identity =
+      (await db
+        .prepare(
+          "SELECT name,email,username FROM owner_identity WHERE singleton=1",
+        )
+        .get()) || null;
     return {
       secret,
-      uri: otp(secret).toString(),
+      uri: otp(secret, identity?.email || "Administration").toString(),
       csrf: csrfFor(vaultKey, sid),
-      identity:
-        db
-          .prepare(
-            "SELECT name,email,username FROM owner_identity WHERE singleton=1",
-          )
-          .get() || null,
+      identity,
     };
   });
   app.post(P + "/setup", async (r, reply) => {
@@ -347,9 +447,9 @@ export async function buildServer({
     const sid = r.cookies[SETUP],
       session =
         sid &&
-        db
+        (await db
           .prepare("SELECT * FROM setup_sessions WHERE hash=?")
-          .get(digest(sid));
+          .get(digest(sid)));
     if (
       !session ||
       session.expires <= clock() ||
@@ -366,8 +466,8 @@ export async function buildServer({
       })
       .strict()
       .parse(r.body);
-    const enforceReservation = () => {
-      const identity = db
+    const enforceReservation = async () => {
+      const identity = await db
         .prepare("SELECT * FROM owner_identity WHERE singleton=1")
         .get();
       if (
@@ -378,7 +478,7 @@ export async function buildServer({
       )
         fail(403, "Brug den reserverede konto i den private opsætning.");
     };
-    enforceReservation();
+    await enforceReservation();
     const secret = unseal(vaultKey, session.secret, "setup:" + session.hash);
     const step = otpStep(secret, input.code, clock());
     if (step === null)
@@ -388,28 +488,32 @@ export async function buildServer({
       );
     const id = randomUUID(),
       hash = await hashPassword(input.password);
-    transaction(db, () => {
-      if (ownerExists()) fail(409, "Administrationen er allerede oprettet.");
-      const liveSetup = db
+    await transaction(db, async () => {
+      if (r.session) await stillAuthorized(r);
+      if (await ownerExists())
+        fail(409, "Administrationen er allerede oprettet.");
+      const liveSetup = await db
         .prepare("SELECT expires FROM setup_sessions WHERE hash=?")
         .get(session.hash);
       if (!liveSetup || liveSetup.expires <= clock())
         fail(403, "Opsætningen er udløbet. Genindlæs siden.");
-      enforceReservation();
-      db.prepare(
-        "INSERT INTO admins(id,email,name,password_hash,mfa_secret,last_step,created_at,username,protected) VALUES(?,?,?,?,?,?,?,?,1)",
-      ).run(
-        id,
-        input.email,
-        input.name,
-        hash,
-        seal(vaultKey, secret, "mfa:" + id),
-        step,
-        stamp(),
-        input.username || null,
-      );
-      db.prepare("DELETE FROM setup_sessions").run();
-      audit(id, "admin.enrolled", id);
+      await enforceReservation();
+      await db
+        .prepare(
+          "INSERT INTO admins(id,email,name,password_hash,mfa_secret,last_step,created_at,username,protected) VALUES(?,?,?,?,?,?,?,?,1)",
+        )
+        .run(
+          id,
+          input.email,
+          input.name,
+          hash,
+          seal(vaultKey, secret, "mfa:" + id),
+          step,
+          stamp(),
+          input.username || null,
+        );
+      await db.prepare("DELETE FROM setup_sessions").run();
+      await audit(id, "admin.enrolled", id);
     });
     reply.clearCookie(SETUP, { path: P + "/setup" });
     return {
@@ -430,11 +534,11 @@ export async function buildServer({
         })
         .strict()
         .parse(r.body);
-      const admin = db
+      const admin = await db
         .prepare("SELECT * FROM admins WHERE email=? OR username=?")
         .get(input.email, input.email);
       const bucket = digest(admin?.id || input.email),
-        attempt = db
+        attempt = await db
           .prepare("SELECT * FROM login_failures WHERE bucket=?")
           .get(bucket);
       if (attempt && attempt.reset_at > clock() && attempt.failures >= 5)
@@ -446,47 +550,68 @@ export async function buildServer({
       if (
         !valid ||
         !admin ||
-        !activeAccount(admin.id) ||
-        !consumeOtp(admin, input.code)
+        !(await activeAccount(admin.id)) ||
+        !(await consumeOtp(admin, input.code))
       ) {
-        db.prepare(
-          "INSERT INTO login_failures VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET failures=CASE WHEN reset_at<=? THEN 1 ELSE failures+1 END,reset_at=CASE WHEN reset_at<=? THEN excluded.reset_at ELSE reset_at END",
-        ).run(bucket, clock() + 10 * 60 * 1000, clock(), clock());
+        await db
+          .prepare(
+            "INSERT INTO login_failures VALUES(?,1,?) ON CONFLICT(bucket) DO UPDATE SET failures=CASE WHEN reset_at<=? THEN 1 ELSE failures+1 END,reset_at=CASE WHEN reset_at<=? THEN excluded.reset_at ELSE reset_at END",
+          )
+          .run(bucket, clock() + 10 * 60 * 1000, clock(), clock());
         fail(
           401,
           "Login blev ikke godkendt. Kontrollér e-mail, adgangskode og en ny authenticator-kode.",
         );
       }
       const sid = token();
-      transaction(db, () => {
-        if (r.cookies[SID])
-          db.prepare("DELETE FROM sessions WHERE hash=?").run(
-            digest(r.cookies[SID]),
+      let signedIn;
+      await transaction(db, async () => {
+        const current = await activeAccount(admin.id);
+        if (!current || current.password_hash !== admin.password_hash)
+          fail(
+            401,
+            "Login blev ikke godkendt. Kontrollér e-mail, adgangskode og en ny authenticator-kode.",
           );
-        db.prepare("DELETE FROM login_failures WHERE bucket=?").run(bucket);
-        db.prepare("DELETE FROM sessions WHERE expires<=? OR seen<=?").run(
-          clock(),
-          clock() - 30 * 60 * 1000,
-        );
-        db.prepare("INSERT INTO sessions VALUES(?,?,?,?,?,?)").run(
-          digest(sid),
-          admin.id,
-          clock(),
-          clock(),
-          clock() + 12 * 60 * 60 * 1000,
-          clock(),
-        );
-        audit(admin.id, "admin.login", admin.id);
+        signedIn = current;
+        if (r.session) await stillAuthorized(r);
+        if (r.cookies[SID])
+          await db
+            .prepare("DELETE FROM sessions WHERE hash=?")
+            .run(digest(r.cookies[SID]));
+        await db
+          .prepare("DELETE FROM login_failures WHERE bucket=?")
+          .run(bucket);
+        await db
+          .prepare("DELETE FROM sessions WHERE expires<=? OR seen<=?")
+          .run(clock(), clock() - 30 * 60 * 1000);
+        await db
+          .prepare("INSERT INTO sessions VALUES(?,?,?,?,?,?)")
+          .run(
+            digest(sid),
+            admin.id,
+            clock(),
+            clock(),
+            clock() + 12 * 60 * 60 * 1000,
+            clock(),
+          );
+        await audit(admin.id, "admin.login", admin.id);
       });
       reply.setCookie(SID, sid, cookieOptions);
-      return sessionDto(admin, sid);
+      reply.clearCookie("bo_session", {
+        ...cookieOptions,
+        path: "/backoffice",
+      });
+      reply.clearCookie("bo_session", cookieOptions);
+      return sessionDto(signedIn, sid);
     },
   );
   app.get(P + "/auth/session", async (r) => sessionDto(r.session, r.sessionId));
   app.post(P + "/auth/logout", async (r, reply) => {
-    db.prepare("DELETE FROM sessions WHERE hash=?").run(r.session.hash);
-    audit(r.adminId, "admin.logout", r.adminId);
+    await db.prepare("DELETE FROM sessions WHERE hash=?").run(r.session.hash);
+    await audit(r.adminId, "admin.logout", r.adminId);
     reply.clearCookie(SID, cookieOptions);
+    reply.clearCookie("bo_session", { ...cookieOptions, path: "/backoffice" });
+    reply.clearCookie("bo_session", cookieOptions);
     return { ok: true };
   });
   app.post(
@@ -494,16 +619,15 @@ export async function buildServer({
     { config: { rateLimit: { max: 5, timeWindow: "10 minutes" } } },
     async (r) => {
       const { code: value } = z.object({ code }).strict().parse(r.body);
-      const admin = db
+      const admin = await db
         .prepare("SELECT * FROM admins WHERE id=?")
         .get(r.adminId);
-      if (!consumeOtp(admin, value))
-        fail(401, "Brug en ny kode fra din authenticator.");
-      db.prepare("UPDATE sessions SET mfa_at=? WHERE hash=?").run(
-        clock(),
-        r.session.hash,
-      );
-      audit(r.adminId, "admin.reauthenticated", r.adminId);
+      if (!(await consumeOtp(admin, value)))
+        fail(401, "Brug en ny kode fra din authenticator.", "invalid_otp");
+      await db
+        .prepare("UPDATE sessions SET mfa_at=? WHERE hash=?")
+        .run(clock(), r.session.hash);
+      await audit(r.adminId, "admin.reauthenticated", r.adminId);
       return { ok: true };
     },
   );
@@ -519,25 +643,32 @@ export async function buildServer({
         })
         .strict()
         .parse(r.body);
-      const admin = db
+      const admin = await db
         .prepare("SELECT * FROM admins WHERE id=?")
         .get(r.adminId);
       if (
         !(await verifyPassword(v.currentPassword, admin.password_hash)) ||
-        !consumeOtp(admin, v.code)
+        !(await consumeOtp(admin, v.code))
       )
         fail(400, "Adgangskoden eller authenticator-koden blev ikke godkendt.");
       const hash = await hashPassword(v.newPassword);
-      transaction(db, () => {
-        stillAuthorized(r);
-        db.prepare("UPDATE admins SET password_hash=? WHERE id=?").run(
-          hash,
-          r.adminId,
-        );
-        db.prepare("DELETE FROM sessions WHERE admin_id=?").run(r.adminId);
-        audit(r.adminId, "admin.password_changed", r.adminId);
+      await transaction(db, async () => {
+        if (r.session) await stillAuthorized(r);
+        await stillAuthorized(r);
+        await db
+          .prepare("UPDATE admins SET password_hash=? WHERE id=?")
+          .run(hash, r.adminId);
+        await db
+          .prepare("DELETE FROM sessions WHERE admin_id=?")
+          .run(r.adminId);
+        await audit(r.adminId, "admin.password_changed", r.adminId);
       });
       reply.clearCookie(SID, cookieOptions);
+      reply.clearCookie("bo_session", {
+        ...cookieOptions,
+        path: "/backoffice",
+      });
+      reply.clearCookie("bo_session", cookieOptions);
       return { ok: true };
     },
   );
@@ -553,31 +684,67 @@ export async function buildServer({
     cookieOptions,
     mailer,
   });
+  installAccountArea(app, { fail, fresh, stillAuthorized, stamp, audit });
+  installUsage(app, {
+    fail,
+    fresh,
+    stillAuthorized,
+    clock,
+    stamp,
+    audit,
+    vaultKey,
+    reportReader,
+  });
   app.get(P + "/overview", async () => ({
-    customers: db.prepare("SELECT count(*) AS n FROM customers").get().n,
-    projects: db.prepare("SELECT count(*) AS n FROM projects").get().n,
-    connections: db.prepare("SELECT count(*) AS n FROM connections").get().n,
+    customers: (
+      await db
+        .prepare(
+          "SELECT count(*) AS n FROM customers WHERE NOT EXISTS(SELECT 1 FROM admin_workspaces WHERE customer_id=customers.id)",
+        )
+        .get()
+    ).n,
+    projects: (await db.prepare("SELECT count(*) AS n FROM projects").get()).n,
+    connections: (
+      await db.prepare("SELECT count(*) AS n FROM connections").get()
+    ).n,
   }));
-  app.get(P + "/customers", async () =>
-    db
-      .prepare("SELECT * FROM customers ORDER BY created_at DESC")
-      .all()
-      .map((c) => ({
-        ...c,
-        account: (() => {
-          const a = db
+  app.get(
+    P + "/customers",
+    async () =>
+      await Promise.all(
+        (
+          await db
             .prepare(
-              "SELECT id,status,username,locale FROM admins WHERE customer_id=?",
+              "SELECT * FROM customers WHERE NOT EXISTS(SELECT 1 FROM admin_workspaces WHERE customer_id=customers.id) ORDER BY created_at DESC",
             )
-            .get(c.id);
-          return a ? { ...a, invitation: accounts.inviteMeta(a.id) } : null;
-        })(),
-        assignments: db
-          .prepare(
-            "SELECT project_id AS projectId,version_id AS versionId FROM assignments WHERE customer_id=?",
-          )
-          .all(c.id),
-      })),
+            .all()
+        ).map(async (c) => ({
+          ...c,
+          name:
+            (
+              await db
+                .prepare(
+                  "SELECT account_profiles.display_name FROM account_profiles JOIN admins ON admins.id=account_profiles.account_id WHERE admins.customer_id=?",
+                )
+                .get(c.id)
+            )?.display_name || c.name,
+          account: await (async () => {
+            const a = await db
+              .prepare(
+                "SELECT id,status,username,locale FROM admins WHERE customer_id=?",
+              )
+              .get(c.id);
+            return a
+              ? { ...a, invitation: await accounts.inviteMeta(a.id) }
+              : null;
+          })(),
+          assignments: await db
+            .prepare(
+              "SELECT project_id AS projectId,version_id AS versionId FROM assignments WHERE customer_id=?",
+            )
+            .all(c.id),
+        })),
+      ),
   );
   async function saveCustomer(r, id, create) {
     const v = customerInput.parse(r.body);
@@ -588,58 +755,87 @@ export async function buildServer({
       fail(400, "Vælg kun én promptversion pr. projekt.");
     const accountId = create
       ? randomUUID()
-      : db.prepare("SELECT id FROM admins WHERE customer_id=?").get(id)?.id;
-    transaction(db, () => {
+      : (await db.prepare("SELECT id FROM admins WHERE customer_id=?").get(id))
+          ?.id;
+    await transaction(db, async () => {
+      if (r.session) await stillAuthorized(r);
+      if (
+        !create &&
+        (await db
+          .prepare(
+            "SELECT account_id FROM admin_workspaces WHERE customer_id=?",
+          )
+          .get(id))
+      )
+        fail(404, "Kunden findes ikke.");
       const currentAccount =
         accountId &&
-        db.prepare("SELECT * FROM admins WHERE id=?").get(accountId);
+        (await db.prepare("SELECT * FROM admins WHERE id=?").get(accountId));
       if (currentAccount && currentAccount.email !== v.email)
         fail(400, "E-mail kan ikke ændres efter invitationen.");
       if (create) {
-        db.prepare("INSERT INTO customers VALUES(?,?,?,?,?,?,?,?)").run(
-          id,
-          v.name,
-          v.email,
-          v.status,
-          v.expires,
-          v.allowance,
-          stamp(),
-          stamp(),
-        );
-        db.prepare(
-          "INSERT INTO admins(id,email,name,password_hash,mfa_secret,last_step,created_at,role,status,locale,customer_id) VALUES(?,?,?,'','',-1,?,'customer','pending',?,?)",
-        ).run(accountId, v.email, v.name, stamp(), v.locale, id);
+        await db
+          .prepare("INSERT INTO customers VALUES(?,?,?,?,?,?,?,?)")
+          .run(
+            id,
+            v.name,
+            v.email,
+            v.status,
+            v.expires,
+            v.allowance,
+            stamp(),
+            stamp(),
+          );
+        await db
+          .prepare(
+            "INSERT INTO admins(id,email,name,password_hash,mfa_secret,last_step,created_at,role,status,locale,customer_id) VALUES(?,?,?,'','',-1,?,'customer','pending',?,?)",
+          )
+          .run(accountId, v.email, v.name, stamp(), v.locale, id);
       } else {
         if (
-          !db
-            .prepare(
-              "UPDATE customers SET name=?,email=?,status=?,expires=?,allowance=?,updated_at=? WHERE id=?",
-            )
-            .run(v.name, v.email, v.status, v.expires, v.allowance, stamp(), id)
-            .changes
+          !(
+            await db
+              .prepare(
+                "UPDATE customers SET name=?,email=?,status=?,expires=?,allowance=?,updated_at=? WHERE id=?",
+              )
+              .run(
+                v.name,
+                v.email,
+                v.status,
+                v.expires,
+                v.allowance,
+                stamp(),
+                id,
+              )
+          ).changes
         )
           fail(404, "Kunden findes ikke.");
-        db.prepare("DELETE FROM assignments WHERE customer_id=?").run(id);
+        await db.prepare("DELETE FROM assignments WHERE customer_id=?").run(id);
         if (accountId) {
-          db.prepare("UPDATE admins SET name=?,locale=? WHERE id=?").run(
-            v.name,
-            v.locale,
-            accountId,
-          );
+          await db
+            .prepare("UPDATE admins SET name=?,locale=? WHERE id=?")
+            .run(v.name, v.locale, accountId);
+          await db
+            .prepare("DELETE FROM account_profiles WHERE account_id=?")
+            .run(accountId);
           if (v.status !== "active")
-            db.prepare("DELETE FROM sessions WHERE admin_id=?").run(accountId);
+            await db
+              .prepare("DELETE FROM sessions WHERE admin_id=?")
+              .run(accountId);
         }
       }
       for (const a of v.assignments)
-        db.prepare("INSERT INTO assignments VALUES(?,?,?)").run(
-          id,
-          a.projectId,
-          a.versionId,
-        );
-      audit(r.adminId, create ? "customer.created" : "customer.updated", id);
+        await db
+          .prepare("INSERT INTO assignments VALUES(?,?,?)")
+          .run(id, a.projectId, a.versionId);
+      await audit(
+        r.adminId,
+        create ? "customer.created" : "customer.updated",
+        id,
+      );
     });
-    const result = create ? await accounts.invite(accountId, r.adminId) : {};
-    if (create) stillAuthorized(r);
+    const result = create ? await accounts.invite(accountId, r.adminId, r) : {};
+    if (create) await stillAuthorized(r);
     return { id, ...result };
   }
   app.post(P + "/customers", async (r) => saveCustomer(r, randomUUID(), true));
@@ -648,39 +844,86 @@ export async function buildServer({
   );
   const connectionMetadata =
     "id,label,project_ref,environment,suffix,revision,enabled,status,last_checked,created_at,updated_at";
-  app.get(P + "/connections", async () =>
-    db
+  // Called only inside the existing serialized control transaction. Reusing a
+  // linked project never changes its name, prompts, assignments or connection.
+  async function ensureConnectionProject(connectionId, adminId) {
+    const connection = await db
+      .prepare("SELECT id,label,enabled FROM connections WHERE id=?")
+      .get(connectionId);
+    if (!connection) fail(404, "Forbindelsen findes ikke.");
+    const existing = await db
       .prepare(
-        `SELECT ${connectionMetadata} FROM connections ORDER BY created_at DESC`,
+        "SELECT id FROM projects WHERE connection_id=? ORDER BY created_at,id LIMIT 1",
       )
-      .all(),
+      .get(connectionId);
+    if (existing) return { projectId: existing.id, projectCreated: false };
+    let name = connection.label,
+      suffix = 1;
+    while (
+      await db
+        .prepare("SELECT id FROM projects WHERE name=? COLLATE NOCASE")
+        .get(name)
+    ) {
+      const ending = ` (${++suffix})`;
+      name =
+        connection.label
+          .slice(0, 80 - ending.length)
+          .replace(/[\uD800-\uDBFF]$/, "") + ending;
+    }
+    const id = randomUUID();
+    await db
+      .prepare("INSERT INTO projects VALUES(?,?,?,?,?,?,?)")
+      .run(id, name, "", connectionId, connection.enabled, stamp(), stamp());
+    await audit(adminId, "project.created", id);
+    return { projectId: id, projectCreated: true };
+  }
+  app.get(
+    P + "/connections",
+    async () =>
+      await db
+        .prepare(
+          `SELECT ${connectionMetadata} FROM connections ORDER BY created_at DESC`,
+        )
+        .all(),
   );
   app.post(P + "/connections", async (r) => {
     fresh(r);
     const v = connectionInput.parse(r.body),
       id = randomUUID();
     const result = await providerCheck(v.apiKey, v.projectRef);
-    stillAuthorized(r);
+    await stillAuthorized(r);
     fresh(r);
     if (result !== "ok") fail(400, connectionError(result));
-    transaction(db, () => {
-      db.prepare("INSERT INTO connections VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(
-        id,
-        v.label,
-        v.projectRef,
-        v.environment,
-        seal(vaultKey, v.apiKey, "connection:" + id),
-        v.apiKey.slice(-4),
-        1,
-        1,
-        "ok",
-        stamp(),
-        stamp(),
-        stamp(),
-      );
-      audit(r.adminId, "connection.created", id);
+    const project = await transaction(db, async () => {
+      if (r.session) await stillAuthorized(r);
+      await db
+        .prepare("INSERT INTO connections VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(
+          id,
+          v.label,
+          v.projectRef,
+          v.environment,
+          seal(vaultKey, v.apiKey, "connection:" + id),
+          v.apiKey.slice(-4),
+          1,
+          1,
+          "ok",
+          stamp(),
+          stamp(),
+          stamp(),
+        );
+      await audit(r.adminId, "connection.created", id);
+      return ensureConnectionProject(id, r.adminId);
     });
-    return { id };
+    return { id, ...project };
+  });
+  app.post(P + "/connections/:id/project", async (r) => {
+    z.object({}).strict().parse(r.body);
+    const id = z.uuid().parse(r.params.id);
+    return transaction(db, async () => {
+      await stillAuthorized(r);
+      return ensureConnectionProject(id, r.adminId);
+    });
   });
   app.put(P + "/connections/:id", async (r) => {
     fresh(r);
@@ -693,16 +936,19 @@ export async function buildServer({
         })
         .strict()
         .parse(r.body);
-    transaction(db, () => {
+    await transaction(db, async () => {
+      if (r.session) await stillAuthorized(r);
       if (
-        !db
-          .prepare(
-            "UPDATE connections SET label=?,enabled=?,updated_at=? WHERE id=? AND revision=?",
-          )
-          .run(v.label, Number(v.enabled), stamp(), id, v.revision).changes
+        !(
+          await db
+            .prepare(
+              "UPDATE connections SET label=?,enabled=?,updated_at=? WHERE id=? AND revision=?",
+            )
+            .run(v.label, Number(v.enabled), stamp(), id, v.revision)
+        ).changes
       )
         fail(409, "Forbindelsen er ændret. Genindlæs og prøv igen.");
-      audit(
+      await audit(
         r.adminId,
         v.enabled ? "connection.updated" : "connection.paused",
         id,
@@ -715,24 +961,27 @@ export async function buildServer({
     { config: { rateLimit: { max: 12, timeWindow: "1 minute" } } },
     async (r) => {
       const id = z.uuid().parse(r.params.id),
-        c = db.prepare("SELECT * FROM connections WHERE id=?").get(id);
+        c = await db.prepare("SELECT * FROM connections WHERE id=?").get(id);
       if (!c) fail(404, "Forbindelsen findes ikke.");
       if (!c.enabled) fail(409, "Aktivér forbindelsen før kontrol.");
       const status = await providerCheck(
         unseal(vaultKey, c.key_secret, "connection:" + id),
         c.project_ref,
       );
-      stillAuthorized(r);
-      transaction(db, () => {
+      await stillAuthorized(r);
+      await transaction(db, async () => {
+        if (r.session) await stillAuthorized(r);
         if (
-          !db
-            .prepare(
-              "UPDATE connections SET status=?,last_checked=?,updated_at=? WHERE id=? AND revision=? AND enabled=1",
-            )
-            .run(status, stamp(), stamp(), id, c.revision).changes
+          !(
+            await db
+              .prepare(
+                "UPDATE connections SET status=?,last_checked=?,updated_at=? WHERE id=? AND revision=? AND enabled=1",
+              )
+              .run(status, stamp(), stamp(), id, c.revision)
+          ).changes
         )
           fail(409, "Forbindelsen er ændret under kontrollen.");
-        audit(r.adminId, "connection.checked." + status, id);
+        await audit(r.adminId, "connection.checked." + status, id);
       });
       return {
         status,
@@ -750,98 +999,263 @@ export async function buildServer({
         .object({ apiKey: keyInput, revision: z.int().min(1) })
         .strict()
         .parse(r.body);
-    const c = db.prepare("SELECT * FROM connections WHERE id=?").get(id);
+    const c = await db.prepare("SELECT * FROM connections WHERE id=?").get(id);
     if (!c) fail(404, "Forbindelsen findes ikke.");
     if (c.revision !== v.revision)
       fail(409, "Forbindelsen er ændret. Genindlæs først.");
     const result = await providerCheck(v.apiKey, c.project_ref);
-    stillAuthorized(r);
+    await stillAuthorized(r);
     fresh(r);
     if (result !== "ok")
       fail(
         400,
         connectionError(result) + " Den eksisterende nøgle er bevaret.",
       );
-    transaction(db, () => {
+    await transaction(db, async () => {
+      if (r.session) await stillAuthorized(r);
       if (
-        !db
-          .prepare(
-            "UPDATE connections SET key_secret=?,suffix=?,revision=revision+1,status=?,last_checked=?,updated_at=? WHERE id=? AND revision=?",
-          )
-          .run(
-            seal(vaultKey, v.apiKey, "connection:" + id),
-            v.apiKey.slice(-4),
-            "ok",
-            stamp(),
-            stamp(),
-            id,
-            v.revision,
-          ).changes
+        !(
+          await db
+            .prepare(
+              "UPDATE connections SET key_secret=?,suffix=?,revision=revision+1,status=?,last_checked=?,updated_at=? WHERE id=? AND revision=?",
+            )
+            .run(
+              seal(vaultKey, v.apiKey, "connection:" + id),
+              v.apiKey.slice(-4),
+              "ok",
+              stamp(),
+              stamp(),
+              id,
+              v.revision,
+            )
+        ).changes
       )
         fail(409, "Forbindelsen er ændret under kontrollen.");
-      audit(r.adminId, "connection.rotated", id);
+      await audit(r.adminId, "connection.rotated", id);
     });
     return { ok: true };
   });
-  app.get(P + "/projects", async () =>
-    db.prepare("SELECT * FROM projects ORDER BY name").all(),
+  app.get(
+    P + "/projects",
+    async () =>
+      await db
+        .prepare(
+          "SELECT p.*,COALESCE(a.color,'black') AS color FROM projects p LEFT JOIN project_appearance a ON a.project_id=p.id ORDER BY p.name",
+        )
+        .all(),
   );
-  function saveProject(r, id, create) {
+  async function saveProject(r, id, create) {
     const v = projectInput.parse(r.body);
-    transaction(db, () => {
+    await transaction(db, async () => {
+      if (r.session) await stillAuthorized(r);
       if (create)
-        db.prepare("INSERT INTO projects VALUES(?,?,?,?,?,?,?)").run(
-          id,
-          v.name,
-          v.description,
-          v.connectionId,
-          Number(v.enabled),
-          stamp(),
-          stamp(),
-        );
+        await db
+          .prepare("INSERT INTO projects VALUES(?,?,?,?,?,?,?)")
+          .run(
+            id,
+            v.name,
+            v.description,
+            v.connectionId,
+            Number(v.enabled),
+            stamp(),
+            stamp(),
+          );
       else {
-        const previous = db
+        const previous = await db
           .prepare("SELECT connection_id FROM projects WHERE id=?")
           .get(id);
         if (!previous) fail(404, "Projektet findes ikke.");
         if (
           previous.connection_id !== null &&
           previous.connection_id !== v.connectionId &&
-          db
+          (await db
             .prepare(
               "SELECT id FROM prompt_versions WHERE project_id=? LIMIT 1",
             )
-            .get(id)
+            .get(id))
         )
           fail(
             409,
             "Projektet har promptversioner. Opret et nyt projekt ved skift til en anden OpenAI-forbindelse.",
           );
-        db.prepare(
-          "UPDATE projects SET name=?,description=?,connection_id=?,enabled=?,updated_at=? WHERE id=?",
-        ).run(
-          v.name,
-          v.description,
-          v.connectionId,
-          Number(v.enabled),
-          stamp(),
-          id,
-        );
+        await db
+          .prepare(
+            "UPDATE projects SET name=?,description=?,connection_id=?,enabled=?,updated_at=? WHERE id=?",
+          )
+          .run(
+            v.name,
+            v.description,
+            v.connectionId,
+            Number(v.enabled),
+            stamp(),
+            id,
+          );
       }
-      audit(r.adminId, create ? "project.created" : "project.updated", id);
+      if (v.color !== undefined)
+        await db
+          .prepare(
+            "INSERT INTO project_appearance(project_id,color) VALUES(?,?) ON CONFLICT(project_id) DO UPDATE SET color=excluded.color",
+          )
+          .run(id, v.color);
+      await audit(
+        r.adminId,
+        create ? "project.created" : "project.updated",
+        id,
+      );
     });
     return { id };
   }
-  app.post(P + "/projects", async (r) => saveProject(r, randomUUID(), true));
-  app.put(P + "/projects/:id", async (r) =>
-    saveProject(r, z.uuid().parse(r.params.id), false),
+  app.post(
+    P + "/projects",
+    async (r) => await saveProject(r, randomUUID(), true),
   );
-  app.get(P + "/prompts", async () =>
-    db
-      .prepare(
-        "SELECT id,project_id,prompt_id,name,version,source_ref,checksum,created_at FROM prompt_versions ORDER BY name,version DESC",
+  app.put(
+    P + "/projects/:id",
+    async (r) => await saveProject(r, z.uuid().parse(r.params.id), false),
+  );
+  app.get(
+    P + "/prompts",
+    async () =>
+      await db
+        .prepare(
+          "SELECT p.id,p.project_id,p.prompt_id,p.name,p.version,p.source_ref,p.checksum,p.created_at,CASE WHEN l.version_id IS NULL THEN 'local' ELSE 'platform' END AS source_kind,l.provider_prompt_id,l.version_policy FROM prompt_versions p LEFT JOIN platform_prompt_links l ON l.version_id=p.id ORDER BY p.name,p.version DESC",
+        )
+        .all(),
+  );
+  app.post(P + "/projects/:id/prompts/link", async (r) => {
+    const projectId = z.uuid().parse(r.params.id),
+      v = z
+        .object({
+          name: text(80),
+          providerPromptId: z
+            .string()
+            .trim()
+            .regex(/^pmpt_[A-Za-z0-9_-]{3,180}$/),
+        })
+        .strict()
+        .parse(r.body);
+    return transaction(db, async () => {
+      await stillAuthorized(r);
+      const project = await db
+        .prepare("SELECT connection_id FROM projects WHERE id=?")
+        .get(projectId);
+      if (!project) fail(404, "Projektet findes ikke.");
+      if (!project.connection_id)
+        fail(400, "Tilføj en API-forbindelse til projektet først.");
+      const prior = await db
+        .prepare(
+          "SELECT version_id FROM platform_prompt_links WHERE project_id=? AND provider_prompt_id=?",
+        )
+        .get(projectId, v.providerPromptId);
+      if (prior)
+        return {
+          id: prior.version_id,
+          projectId,
+          linked: true,
+          created: false,
+        };
+      if (
+        await db
+          .prepare(
+            "SELECT id FROM prompt_versions WHERE project_id=? AND name=? COLLATE NOCASE",
+          )
+          .get(projectId, v.name)
       )
-      .all(),
+        fail(409, "Navnet bruges allerede i projektet. Vælg et andet navn.");
+      const id = randomUUID();
+      await db
+        .prepare("INSERT INTO prompt_versions VALUES(?,?,?,?,?,?,?,?,?)")
+        .run(
+          id,
+          projectId,
+          randomUUID(),
+          v.name,
+          1,
+          seal(vaultKey, "", "prompt:" + id),
+          v.providerPromptId,
+          digest(
+            JSON.stringify({
+              kind: "openai_prompt",
+              id: v.providerPromptId,
+              versionPolicy: "default",
+            }),
+          ),
+          stamp(),
+        );
+      await db
+        .prepare("INSERT INTO platform_prompt_links VALUES(?,?,?,?,?)")
+        .run(
+          id,
+          projectId,
+          project.connection_id,
+          v.providerPromptId,
+          "default",
+        );
+      await audit(r.adminId, "prompt.linked", id);
+      return { id, projectId, linked: true, created: true };
+    });
+  });
+  app.post(
+    P + "/projects/:id/prompts/import",
+    { bodyLimit: MAX_IMPORT_BYTES },
+    async (r) => {
+      const projectId = z.uuid().parse(r.params.id),
+        v = promptImport.parse(r.body);
+      return transaction(db, async () => {
+        await stillAuthorized(r);
+        const project = await db
+          .prepare(
+            "SELECT projects.id,connections.project_ref FROM projects LEFT JOIN connections ON connections.id=projects.connection_id WHERE projects.id=?",
+          )
+          .get(projectId);
+        if (!project) fail(404, "Projektet findes ikke.");
+        if (v.projectRef && v.projectRef !== project.project_ref)
+          fail(
+            400,
+            "Filen tilhører et andet OpenAI-projekt. Vælg det rigtige projekt.",
+          );
+        let imported = 0,
+          skipped = 0;
+        for (const item of v.prompts) {
+          const checksum = digest(item.instructions);
+          const existing = await db
+            .prepare(
+              "SELECT id,prompt_id,checksum,source_ref FROM prompt_versions WHERE project_id=? AND name=? COLLATE NOCASE ORDER BY version DESC LIMIT 1",
+            )
+            .get(projectId, item.name);
+          if (existing) {
+            if (
+              existing.checksum === checksum &&
+              existing.source_ref === item.sourceRef
+            ) {
+              skipped++;
+              continue;
+            }
+            fail(
+              409,
+              "En prompt med dette navn findes allerede. Åbn den for at oprette en ny version.",
+            );
+          }
+          const id = randomUUID();
+          await db
+            .prepare("INSERT INTO prompt_versions VALUES(?,?,?,?,?,?,?,?,?)")
+            .run(
+              id,
+              projectId,
+              randomUUID(),
+              item.name,
+              1,
+              seal(vaultKey, item.instructions, "prompt:" + id),
+              item.sourceRef,
+              checksum,
+              stamp(),
+            );
+          await audit(r.adminId, "prompt.version_created", id);
+          imported++;
+        }
+        return { projectId, imported, skipped };
+      });
+    },
   );
   app.post(P + "/prompts", async (r) => {
     const v = z
@@ -856,68 +1270,97 @@ export async function buildServer({
       .parse(r.body);
     const id = randomUUID(),
       promptId = v.promptId || randomUUID();
-    transaction(db, () => {
+    await transaction(db, async () => {
+      if (r.session) await stillAuthorized(r);
       if (
         v.promptId &&
-        !db
+        (await db
+          .prepare(
+            "SELECT l.version_id FROM platform_prompt_links l JOIN prompt_versions p ON p.id=l.version_id WHERE p.project_id=? AND p.prompt_id=?",
+          )
+          .get(v.projectId, promptId))
+      )
+        fail(
+          400,
+          "Denne prompt administreres i OpenAI Platform. Redigér den der.",
+        );
+      if (
+        v.promptId &&
+        !(await db
           .prepare(
             "SELECT id FROM prompt_versions WHERE project_id=? AND prompt_id=?",
           )
-          .get(v.projectId, promptId)
+          .get(v.projectId, promptId))
       )
         fail(400, "Vælg en prompt fra det samme projekt.");
       if (
         !v.promptId &&
-        db
+        (await db
           .prepare(
             "SELECT id FROM prompt_versions WHERE project_id=? AND name=? COLLATE NOCASE",
           )
-          .get(v.projectId, v.name)
+          .get(v.projectId, v.name))
       )
         fail(409, "Opret en ny version af den eksisterende prompt.");
-      const version = db
-        .prepare(
-          "SELECT coalesce(max(version),0)+1 AS next FROM prompt_versions WHERE project_id=? AND prompt_id=?",
-        )
-        .get(v.projectId, promptId).next;
-      db.prepare("INSERT INTO prompt_versions VALUES(?,?,?,?,?,?,?,?,?)").run(
-        id,
-        v.projectId,
-        promptId,
-        v.name,
-        version,
-        seal(vaultKey, v.instructions, "prompt:" + id),
-        v.sourceRef,
-        digest(v.instructions),
-        stamp(),
-      );
-      audit(r.adminId, "prompt.version_created", id);
+      const version = (
+        await db
+          .prepare(
+            "SELECT coalesce(max(version),0)+1 AS next FROM prompt_versions WHERE project_id=? AND prompt_id=?",
+          )
+          .get(v.projectId, promptId)
+      ).next;
+      await db
+        .prepare("INSERT INTO prompt_versions VALUES(?,?,?,?,?,?,?,?,?)")
+        .run(
+          id,
+          v.projectId,
+          promptId,
+          v.name,
+          version,
+          seal(vaultKey, v.instructions, "prompt:" + id),
+          v.sourceRef,
+          digest(v.instructions),
+          stamp(),
+        );
+      await audit(r.adminId, "prompt.version_created", id);
     });
     return { id };
   });
   app.get(P + "/prompts/:id", async (r) => {
     const id = z.uuid().parse(r.params.id),
-      p = db.prepare("SELECT * FROM prompt_versions WHERE id=?").get(id);
+      p = await db.prepare("SELECT * FROM prompt_versions WHERE id=?").get(id);
     if (!p) fail(404, "Prompten findes ikke.");
-    audit(r.adminId, "prompt.viewed", id);
+    const link = await db
+      .prepare(
+        "SELECT provider_prompt_id,version_policy FROM platform_prompt_links WHERE version_id=?",
+      )
+      .get(id);
+    await audit(r.adminId, "prompt.viewed", id);
+    if (link) {
+      const { instructions, ...metadata } = p;
+      return { ...metadata, source_kind: "platform", ...link };
+    }
     return {
       ...p,
+      source_kind: "local",
       instructions: unseal(vaultKey, p.instructions, "prompt:" + id),
     };
   });
-  app.get(P + "/audit", async () =>
-    db
-      .prepare(
-        "SELECT audit.*,admins.name AS administrator FROM audit LEFT JOIN admins ON admins.id=audit.admin_id ORDER BY created_at DESC LIMIT 100",
-      )
-      .all(),
+  app.get(
+    P + "/audit",
+    async () =>
+      await db
+        .prepare(
+          "SELECT audit.*,admins.name AS administrator FROM audit LEFT JOIN admins ON admins.id=audit.admin_id ORDER BY created_at DESC LIMIT 100",
+        )
+        .all(),
   );
   app.get("/backoffice/health.json", async () => {
-    db.prepare("SELECT 1").get();
+    await db.prepare("SELECT 1").get();
     return {
       status: "ok",
       application: "kundetypeassistent-backoffice",
-      stage: "administration",
+      stage: "customer-workspace",
       revision: process.env.APP_REVISION || "local",
     };
   });
@@ -925,6 +1368,14 @@ export async function buildServer({
     await app.register(serveStatic, {
       root: staticRoot,
       prefix: "/backoffice/",
+      index: "index.html",
+      cacheControl: false,
+    });
+  if (customerRoot)
+    await app.register(serveStatic, {
+      root: customerRoot,
+      prefix: "/",
+      decorateReply: false,
       index: "index.html",
       cacheControl: false,
     });

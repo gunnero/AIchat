@@ -1,4 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
+import { linkTable } from "./platform-schema.mjs";
+import { accountTables } from "./account-schema.mjs";
+import { sqliteAppearanceTable } from "./custom-color-schema.mjs";
+import { reportingTable } from "./reporting-schema.mjs";
 export function openDatabase(path) {
   const db = new DatabaseSync(path);
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -43,10 +47,24 @@ export function openDatabase(path) {
         INSERT INTO schema_version VALUES(2);
       `);
     });
-  } else if (version !== 2) {
+  } else if (version !== 2 && version !== 3) {
     db.close();
     throw new Error("Unsupported database schema");
   }
+  if (version < 3)
+    transaction(db, () => {
+      db.exec(linkTable + "INSERT INTO schema_version VALUES(3);");
+    });
+  if (
+    !db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='account_profiles'",
+      )
+      .get()
+  )
+    transaction(db, () => db.exec(accountTables));
+  db.exec(sqliteAppearanceTable);
+  db.exec(reportingTable.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"));
   return db;
 }
 export function transaction(db, fn) {
@@ -58,5 +76,31 @@ export function transaction(db, fn) {
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
+  }
+}
+
+// Asynchronous production adapter; SQLite remains solely for migration/tests.
+const queues = new WeakMap();
+export async function asyncTransaction(db, fn) {
+  if (db.dialect === "postgres") return db.transaction(fn);
+  const before = queues.get(db) || Promise.resolve();
+  let release;
+  queues.set(
+    db,
+    new Promise((resolve) => {
+      release = resolve;
+    }),
+  );
+  await before;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = await fn();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  } finally {
+    release();
   }
 }

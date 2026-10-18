@@ -1,5 +1,314 @@
 // Shared UI/API catalog. User content is never translated.
 export const english = {
+  Administration: "Administration",
+  Administrationsmenu: "Administration menu",
+  Menu: "Menu",
+  "Siden kunne ikke indlæses. Genindlæs for at prøve igen.":
+    "The page could not be loaded. Reload to try again.",
+  "Genindlæs siden": "Reload page",
+  "Åbner dit arbejdsrum…": "Opening your workspace…",
+  "Log ind i administrationen": "Sign in to administration",
+  "Log ind i dit arbejdsrum": "Sign in to your workspace",
+  "Administrér dine assistenter": "Manage your assistants",
+  "Administrér kunder, projekter og adgang.":
+    "Manage customers, projects and access.",
+  "Dine assistenter og private samtaler venter her.":
+    "Your assistants and private conversations are here.",
+  Projekt: "Project",
+  Bruger: "User",
+  "Forbrug og udgifter": "Usage & costs",
+  "Overblik over forbrug og rammer": "Your usage and allowances at a glance",
+  "Se tildelte rammer og OpenAI-udgifter. Samtalerne forbliver private.":
+    "See assigned allowances and OpenAI costs. Conversations stay private.",
+  "Tal for appen og din tilsluttede OpenAI-organisation vises hver for sig.":
+    "App figures and your connected OpenAI organisation are shown separately.",
+  "Opdatér overblik": "Refresh overview",
+  "OpenAI-forbrug og udgifter": "OpenAI usage and spending",
+  "Se i OpenAI": "View in OpenAI",
+  "Tilslut OpenAI-rapportering": "Connect OpenAI reporting",
+  "Tilføj en Admin API-nøgle for at se organisationens faktiske udgifter og modeltokens. Projektnøgler giver ikke denne rapportadgang.":
+    "Add an Admin API key to see the organisation’s reported spending and model tokens. Project keys do not provide this reporting access.",
+  "Tilslut rapportering": "Connect reporting",
+  Rapporteringsnøgle: "Reporting key",
+  "Afbryd rapportering": "Disconnect reporting",
+  "Måned · UTC": "Month · UTC",
+  "OpenAI-udgifter · USD": "OpenAI spending · USD",
+  "Rapporteret af OpenAI": "Reported by OpenAI",
+  Modeltokens: "Model tokens",
+  "Input og output; cachetokens tælles én gang":
+    "Input and output; cached tokens counted once",
+  Modelkald: "Model requests",
+  "I den valgte måned": "For the selected month",
+  "Henter OpenAI-rapport…": "Loading OpenAI report…",
+  "Senest hentet": "Last fetched",
+  "OpenAI-forbrug pr. projekt": "OpenAI usage by project",
+  "OpenAI-projekt": "OpenAI project",
+  Inputtokens: "Input tokens",
+  Outputtokens: "Output tokens",
+  "Udgifter · USD": "Spending · USD",
+  "Øvrigt OpenAI-projekt": "Other OpenAI project",
+  "Ikke fordelt på projekt": "Not allocated to a project",
+  "OpenAI har endnu ikke rapporteret forbrug i denne periode.":
+    "OpenAI has not reported usage for this period yet.",
+  "Vis dagligt forbrug": "Show daily breakdown",
+  "Dagligt OpenAI-forbrug": "Daily OpenAI usage",
+  "Dato · UTC": "Date · UTC",
+  "OpenAI-totaler omfatter også Platform-tests og andre værktøjer i den tilsluttede organisation. Modeltokens omfatter modelkald; øvrige betalte tjenester kan indgå i udgifterne. Tallene kan blive opdateret med forsinkelse og er ikke kundebetalinger.":
+    "OpenAI totals also include Platform tests and other tools in the connected organisation. Model tokens cover model requests; spending can include other paid services. Figures may arrive later and are not customer payments.",
+  "DENNE APP": "THIS APP",
+  "Brugere og tildelte rammer": "Users and assigned allowances",
+  "Administrér kunder": "Manage customers",
+  "Tildelt svarramme i alt": "Total assigned response allowance",
+  "Svar, ikke tokens eller penge": "Responses, not tokens or money",
+  "AI-svar er endnu ikke aktiveret i appen. Tokens, brugt beløb og resterende saldo pr. bruger er derfor ikke målt. Den tildelte svarramme håndhæves endnu ikke.":
+    "AI replies are not enabled in the app yet. Tokens, spending and remaining balance per user are therefore not measured. The assigned response allowance is not enforced yet.",
+  "Søg efter bruger": "Search users",
+  "Navn eller e-mail": "Name or email",
+  "Alle projekter": "All projects",
+  "Brugte tokens": "Tokens used",
+  "Brugt beløb · USD": "Spent · USD",
+  "Ikke målt": "Not measured",
+  "Ingen brugere matcher filtrene.": "No users match the filters.",
+  "Rammen gemmes pr. person og vises én gang, selv når flere projekter er tildelt. OpenAI-udgifter fordeles ikke automatisk på appens brugere. Samtaletitler og beskeder vises aldrig her.":
+    "The allowance is stored per person and shown once, even with several assigned projects. OpenAI costs are not automatically allocated to app users. Conversation titles and messages are never shown here.",
+  "Opret en særskilt OpenAI Admin API-nøgle med adgang til Usage og Costs. Appen bruger den kun til at læse rapporter. Den erstatter ikke projekternes chatnøgler.":
+    "Create a dedicated OpenAI Admin API key with access to Usage and Costs. This app uses it only to read reports. It does not replace project chat keys.",
+  "Navn på rapporteringsforbindelsen": "Reporting connection name",
+  "OpenAI Admin API-nøgle": "OpenAI Admin API key",
+  "Nøglen sendes sikkert til serveren, kontrolleres og gemmes krypteret. Den vises aldrig igen. En afvist ny nøgle ændrer ikke den eksisterende forbindelse.":
+    "The key is sent securely to the server, checked and stored encrypted. It is never displayed again. A rejected new key leaves the existing connection unchanged.",
+  "Åbn OpenAI Admin-nøgler": "Open OpenAI Admin keys",
+  "OpenAI-rapportering er tilsluttet.": "OpenAI reporting is connected.",
+  "OpenAI-rapportering er afbrudt.": "OpenAI reporting is disconnected.",
+  "Rapporteringsnøglen fjernes fra appen. OpenAI-kontoen og projektforbindelserne ændres ikke.":
+    "The reporting key is removed from the app. Your OpenAI account and project connections remain unchanged.",
+  "Rapporteringsnøglen blev afvist. Den eksisterende forbindelse er bevaret.":
+    "The reporting key was rejected. The existing connection is unchanged.",
+  "Nøglen mangler adgang til OpenAI Usage og Costs. Brug en Admin API-nøgle.":
+    "The key cannot access OpenAI Usage and Costs. Use an Admin API key.",
+  "OpenAI begrænser rapporteringen midlertidigt. Prøv igen senere.":
+    "OpenAI is temporarily limiting reports. Try again later.",
+  "OpenAI-rapporten kunne ikke hentes fuldstændigt. Prøv igen. Ingen delvise totaler vises.":
+    "The complete OpenAI report could not be loaded. Try again. Partial totals are not displayed.",
+  "Brug en OpenAI Admin API-nøgle til rapportering, ikke en projektnøgle.":
+    "Use an OpenAI Admin API key for reporting, rather than a project key.",
+  "Rapporteringsforbindelsen er ændret. Genindlæs siden.":
+    "The reporting connection changed. Refresh the page.",
+  "Vælg en måned inden for de seneste 24 måneder.":
+    "Choose a month within the last 24 months.",
+  "Tilslut OpenAI-rapportering først.": "Connect OpenAI reporting first.",
+  "Rapportering tilsluttet": "Reporting connected",
+  "Rapportering afbrudt": "Reporting disconnected",
+  "Farve på arbejdsrum": "Workspace colour",
+  Brugerdefineret: "Custom",
+  "Brugerdefineret farve": "Custom colour",
+  "Vælg farve": "Choose colour",
+  "Hex-farvekode": "Hex colour code",
+  "Dit arbejdsrum": "Your workspace",
+  "Eksempel på sidemenuens farve": "Sidebar colour preview",
+  "Eksempel på arbejdsrummets farve": "Workspace colour preview",
+  Annullér: "Cancel",
+  "Arbejdsrummets knapper, links og sidemenu følger denne farve, når projektet er valgt.":
+    "Workspace buttons, links and the sidebar use this colour when the project is selected.",
+  "Brug # og seks tegn, fx #3B82F6. Tekst og knapper tilpasses automatisk, så de er lette at læse.":
+    "Use # and six characters, e.g. #3B82F6. Text and buttons adjust automatically to stay readable.",
+  "Sidemenuen bruger denne farve, når projektet er valgt.":
+    "The sidebar uses this colour when this project is selected.",
+  Sort: "Black",
+  Gul: "Yellow",
+  Lilla: "Purple",
+  Grøn: "Green",
+  "Kontooplysningerne kunne ikke indlæses. Genindlæs siden og prøv igen.":
+    "Your account details could not be loaded. Refresh the page and try again.",
+  "Åbn administration, vælg Admins, og tildel en assistent til din konto.":
+    "Open administration, choose Admins and assign an assistant to your account.",
+  "Assistenter tildelt": "Assistants assigned",
+  "Profil opdateret": "Profile updated",
+  "Min konto": "My account",
+  "Åbn mit arbejdsrum": "Open my workspace",
+  "Åbn administration": "Open administration",
+  "Tildel assistenter": "Assign assistants",
+  "Admin bruger sit eget private arbejdsrum. Tildelingen giver ikke adgang til andres samtaler.":
+    "Admins use their own private workspace. Assignments do not give access to anyone else's conversations.",
+  "Dit navn er gemt.": "Your name has been saved.",
+  "Din profil": "Your profile",
+  "Gem navn": "Save name",
+  "Din adgang og ramme": "Your access and allowance",
+  "Dette er din tildelte ramme. Faktisk tokenforbrug og håndhævelse er endnu ikke aktiveret.":
+    "This is your assigned allowance. Actual token tracking and enforcement are not active yet.",
+  "Betalingshistorik og pakker vises, når betalingssystemet er tilsluttet.":
+    "Payment history and packages will appear when the payment system is connected.",
+  "Adgang til": "Access until",
+  "Dine assistenter": "Your assistants",
+  "Ingen assistenter tildelt endnu.": "No assistants assigned yet.",
+  Sikkerhed: "Security",
+  "Totrinslogin er påkrævet for din konto.":
+    "Two-factor sign-in is required for your account.",
+  "Opsæt totrinslogin": "Set up two-factor sign-in",
+  "Åbn din authenticator-app på telefonen, vælg Tilføj konto, og scan koden.":
+    "Open your authenticator app on your phone, choose Add account and scan the code.",
+  "QR-kode til totrinslogin": "QR code for two-factor sign-in",
+  "Navn i din authenticator": "Name in your authenticator",
+  "QR-koden kunne ikke vises. Brug opsætningsnøglen nedenfor.":
+    "The QR code could not be displayed. Use the setup key below.",
+  "Indtast derefter appens 6-cifrede kode i formularen nedenfor.":
+    "Then enter the app's 6-digit code in the form below.",
+  "Kan du ikke scanne? Brug en opsætningsnøgle": "Can't scan? Use a setup key",
+  "Vælg manuel indtastning i din authenticator, og brug denne nøgle. Vælg Tidsbaseret som kontotype.":
+    "Choose manual entry in your authenticator and use this key. Select Time-based as the account type.",
+  "Hold QR-koden og opsætningsnøglen private.":
+    "Keep the QR code and setup key private.",
+  "Tilføj en API-forbindelse til projektet først.":
+    "Add an API connection to this project first.",
+  "Navnet bruges allerede i projektet. Vælg et andet navn.":
+    "This name is already used in the project. Choose another name.",
+  "Denne prompt administreres i OpenAI Platform. Redigér den der.":
+    "This prompt is managed in OpenAI Platform. Edit it there.",
+  "Indsæt promptens ID fra OpenAI. Det starter med pmpt_.":
+    "Paste the prompt ID from OpenAI. It starts with pmpt_.",
+  "Opret og redigér assistenten i OpenAI Platform. Tilknyt dens prompt-ID her én gang.":
+    "Set up and edit the assistant in OpenAI Platform. Connect its prompt ID here once.",
+  "OpenAI-prompt-ID": "OpenAI prompt ID",
+  "Kopiér ID'et fra din gemte prompt i OpenAI. Du skal ikke kopiere instruktionerne.":
+    "Copy the ID from your saved prompt in OpenAI. You don't need to copy the instructions.",
+  "Åbn OpenAI Platform": "Open OpenAI Platform",
+  "Administreres i OpenAI · Udgivet standardversion":
+    "Managed in OpenAI · Published default",
+  "Fremtidige AI-svar skal bruge OpenAI-promptens udgivne standardversion. Foretag ændringer i OpenAI Platform.":
+    "Future AI replies will use the prompt's published default in OpenAI. Make changes in OpenAI Platform.",
+  "AI-svar er ikke aktiveret endnu. Tilknytningen gemmes nu; adgang til prompten er endnu ikke testet.":
+    "AI replies are not enabled yet. This saves the link; access to the prompt has not been tested.",
+  "Tilknyt prompt": "Connect prompt",
+  "Projektet er oprettet. Tilknyt nu din OpenAI-prompt.":
+    "Project created. Connect your OpenAI prompt next.",
+  "Prompten er tilknyttet. Foretag ændringer i OpenAI Platform.":
+    "Prompt linked. Make changes in OpenAI Platform.",
+  "Tilknyt dine OpenAI-prompter, og vælg den rette assistent til hver kunde.":
+    "Connect your OpenAI prompts and choose the right assistant for each customer.",
+  "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilknytte din OpenAI-prompt.":
+    "Add a project key. We create the project so you can connect your OpenAI prompt.",
+  "Forbind OpenAI, tilknyt din prompt og invitér din første kunde.":
+    "Connect OpenAI, link your prompt and invite your first customer.",
+  "Tilknyt din OpenAI-prompt": "Connect your OpenAI prompt",
+  "Opret og redigér instruktionerne i OpenAI Platform.":
+    "Set up and edit the instructions in OpenAI Platform.",
+  "Når forbindelsen gemmes, oprettes et projekt i appen. Tilknyt derefter din gemte OpenAI-prompt med dens ID. Kontrollen bekræfter ikke adgang til prompten eller kreditbalance.":
+    "Saving a connection creates an app project. Then connect your saved OpenAI prompt by its ID. The check does not confirm prompt access or credit balance.",
+  Prompter: "Prompts",
+  "Tilknyt OpenAI-prompt": "Connect an OpenAI prompt",
+  "Redigér i OpenAI": "Edit in OpenAI",
+  "Tilknyt en OpenAI-prompt, før projektet tildeles en kunde.":
+    "Connect an OpenAI prompt before assigning the project to a customer.",
+  "Instruktionerne administreres i OpenAI Platform. Appen gemmer tilknytningen og kundernes adgang. AI-svar er endnu ikke aktiveret.":
+    "Instructions are managed in OpenAI Platform. The app stores the link and customers' access. AI replies are not enabled yet.",
+  "OpenAI-standardversion": "OpenAI default",
+  "OpenAI-prompt tilknyttet": "OpenAI prompt linked",
+  "Importér fra en fil · valgfrit": "Import from a file · optional",
+  "Tilføj en projektnøgle. Vi opretter projektet, så du kan tilføje instruktionerne.":
+    "Add a project key. We create the project so you can add the instructions.",
+  "Filen tilhører et andet OpenAI-projekt. Vælg det rigtige projekt.":
+    "This file belongs to a different OpenAI project. Choose the correct project.",
+  "En prompt med dette navn findes allerede. Åbn den for at oprette en ny version.":
+    "A prompt with this name already exists. Open it to create a new version.",
+  "Vælg en tekstfil eller importfil på højst 256 KB.":
+    "Choose a text or import file up to 256 KB.",
+  "Filen kunne ikke importeres. Brug en tekstfil med instruktioner eller appens JSON-importformat.":
+    "This file could not be imported. Use a text file containing instructions or the app's JSON import format.",
+  "Tilføj et navn og instruktionerne, før du importerer.":
+    "Add a name and the instructions before importing.",
+  "Tilføj instruktionerne én gang. Derefter kan du redigere dem her.":
+    "Add your instructions once. You can edit them here afterward.",
+  "Vælg en fil · valgfrit": "Choose a file · optional",
+  "Brug en tekstfil eller appens JSON-importformat. En API-nøgle kan ikke hente instruktionerne her.":
+    "Use a text file or the app's JSON import format. An API key cannot retrieve the instructions here.",
+  "Gennemse importen": "Review import",
+  "Gennemse instruktionerne, før du importerer.":
+    "Review the instructions before importing.",
+  "Indsæt tekst i stedet": "Paste text instead",
+  "Navn på prompt": "Prompt name",
+  "Kildereference · valgfrit": "Source reference · optional",
+  "Oprindeligt prompt-ID og version": "Original prompt ID and version",
+  "Importen opretter version 1. Kundernes nuværende tildelinger ændres ikke.":
+    "Import creates version 1. Customers' current assignments stay unchanged.",
+  "Importér prompter": "Import prompts",
+  "Projektet er oprettet. Tilføj nu instruktionerne.":
+    "Project created. Add the instructions next.",
+  "Importeret: {imported}. Allerede tilføjet: {skipped}.":
+    "Imported: {imported}. Already added: {skipped}.",
+  "Forbind OpenAI, tilføj instruktionerne og invitér din første kunde.":
+    "Connect OpenAI, add the instructions and invite your first customer.",
+  "Importér dine instruktioner": "Import your instructions",
+  "Åbn projekt": "Open project",
+  "Når forbindelsen gemmes, oprettes et projekt i appen. Derefter tilføjer du instruktionerne én gang. Kontrollen bekræfter ikke kreditbalance eller alle modelrettigheder.":
+    "Saving a connection creates an app project. Then add the instructions once. The check does not confirm credit balance or every model permission.",
+  "Importér godkendte instruktioner én gang, og administrér dem her. Nye versioner ændrer ikke eksisterende kundetildelinger.":
+    "Import approved instructions once, then manage them here. New versions leave existing customer assignments unchanged.",
+  "Vi opretter også et projekt i appen med dette navn.":
+    "We also create an app project with this name.",
+  "Dette er et nøgle-ID. Indsæt projektets ID, som starter med proj_.":
+    "This is a key ID. Paste the project ID starting with proj_.",
+  "Indsæt projektets ID fra OpenAI. Det starter med proj_.":
+    "Paste the project ID from OpenAI. It starts with proj_.",
+  "Kopiér projekt-ID'et fra projektets indstillinger i OpenAI. Det starter med proj_.":
+    "Copy the project ID from your project's settings in OpenAI. It starts with proj_.",
+  "Åbn OpenAI-indstillinger": "Open OpenAI settings",
+  "Bekræft ændringen": "Confirm this change",
+  "Åbn din authenticator-app, og indtast den 6-cifrede kode for at gennemføre ændringen.":
+    "Open your authenticator app and enter the 6-digit code to finish this change.",
+  "Dine indtastninger er bevaret, mens du gør dette.":
+    "Your entries are kept while you do this.",
+  Sikkerhedskode: "Security code",
+  "Bekræft og fortsæt": "Confirm and continue",
+  Tilbage: "Back",
+
+  "Prøv igen": "Try again",
+  "Åbn samtaler": "Open conversations",
+  "Samtalen og alle dens beskeder slettes. Handlingen kan ikke fortrydes.":
+    "This conversation and all its messages will be deleted. This cannot be undone.",
+  Samtaletitel: "Conversation title",
+  "Kun du har adgang til dine private samtaler i appen.":
+    "Only you can access your private conversations in the app.",
+  "Gem besked": "Save message",
+  "Gemmer…": "Saving…",
+  "Skriv din besked…": "Write your message…",
+  "Din besked": "Your message",
+  "Prompten er ændret. Denne samtale kan læses. Start en ny samtale for at fortsætte.":
+    "The prompt has changed. This conversation is read-only. Start a new conversation to continue.",
+  "Skriv din første besked nedenfor.": "Write your first message below.",
+  "Hvad vil du arbejde med?": "What would you like to work on?",
+  Dig: "You",
+  "Vis tidligere beskeder": "Show earlier messages",
+  "Start en samtale": "Start a conversation",
+  "Start en samtale og gem dine beskeder på ét privat sted.":
+    "Start a conversation and keep your messages in one private place.",
+  "Plads til dine tanker.": "Space for your thoughts.",
+  "Kontakt din administrator for at få adgang.":
+    "Contact your administrator to get access.",
+  "Arbejdsrummet kunne ikke åbnes. Prøv igen.":
+    "The workspace could not be opened. Please try again.",
+  "Dine beskeder gemmes privat. AI-svar er endnu ikke aktiveret.":
+    "Your messages are saved privately. AI replies are not enabled yet.",
+  "Slet samtale": "Delete conversation",
+  "Omdøb samtale": "Rename conversation",
+  Privat: "Private",
+  "Privat konto · 2FA": "Private account · 2FA",
+  "Vis flere samtaler": "Show more conversations",
+  "Indlæser…": "Loading…",
+  "Ingen samtaler endnu.": "No conversations yet.",
+  "Ingen titler matcher din søgning.": "No titles match your search.",
+  "Dine samtaler": "Your conversations",
+  "Søg i samtaletitler": "Search conversation titles",
+  "Ny samtale": "New conversation",
+  "Ingen projekter": "No projects",
+  "Beskeden er gemt.": "Message saved.",
+  "Prompten er ændret. Start en ny samtale.":
+    "The prompt has changed. Start a new conversation.",
+  "Anmodningen er allerede brugt.":
+    "This request identifier has already been used.",
+  "Samtalen findes ikke.": "Conversation not found.",
+  "Adgang kræver en invitation, en personlig adgangskode og en authenticator-kode.":
+    "Access requires an invitation, a personal password and an authenticator code.",
+  "Dit private arbejdsrum": "Your private workspace",
   "Tabel med vandret rulning": "Horizontally scrollable table",
   "Rul til siden for flere kolonner.": "Scroll sideways for more columns.",
   Overblik: "Overview",
@@ -27,7 +336,7 @@ export const english = {
     "Account saved, but the email could not be sent. Please resend the invitation.",
   "Invitationen er afleveret til mailserveren. Levering er endnu ikke bekræftet.":
     "Invitation accepted by the mail server. Delivery has not yet been confirmed.",
-  "Åbner administrationen…": "Opening your workspace…",
+  "Åbner administrationen…": "Opening administration…",
   "DIT ARBEJDSRUM": "YOUR WORKSPACE",
   "Skift adgangskode": "Change password",
   "Log ud": "Sign out",
@@ -61,8 +370,8 @@ export const english = {
   "Opret og tildel kunder": "Create and assign customers",
   "Vælg adgang og den rette prompt til hver kunde.":
     "Choose access and the right prompt for each customer.",
-  "Konti aktiveres via invitation med adgangskode og obligatorisk 2FA. Live AI-chat, privat historik og betaling er endnu ikke tilsluttet.":
-    "Accounts are activated by invitation with a password and required 2FA. Live AI chat, private history and payments are not yet connected.",
+  "Kunder får adgang via en invitation. Deres samtaler er private. AI-svar er endnu ikke aktiveret.":
+    "Customers join by invitation. Their conversations are private. AI replies are not enabled yet.",
   "Dine kunder": "Your customers",
   Kunde: "Customer",
   Svarramme: "Response allowance",
@@ -116,8 +425,8 @@ export const english = {
   Tidspunkt: "Time",
   Administrator: "Admin",
   "Ingen aktiviteter endnu.": "No activity yet.",
-  "Adgang med authenticator · Private kundesamtaler indgår ikke":
-    "Authenticator required · Private customer conversations are excluded",
+  "Sikker adgang · Kundernes samtaler er private":
+    "Secure access · Customers’ conversations are private",
   "Administrér Admin": "Manage Admin",
   "Administrér kunde": "Manage customer",
   "Tilføj kunde": "Add customer",

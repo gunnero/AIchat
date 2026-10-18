@@ -15,6 +15,11 @@
 body {
   margin: 0;
 }
+.deferred-state {
+  padding: 24px;
+  margin: auto;
+  max-width: 600px;
+}
 button,
 input,
 textarea,
@@ -127,17 +132,6 @@ aside {
   color: var(--muted);
   font-size: 14px;
 }
-.brand-mark {
-  border: 2px solid #171717;
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
 .nav-label {
   margin: 48px 14px 14px;
 }
@@ -195,6 +189,45 @@ nav button:not(.selected):hover {
 .admin-person strong,
 .admin-person small {
   display: block;
+}
+.side-footer > .account-trigger {
+  width: 100%;
+  color: #171717;
+  text-align: left;
+  padding: 18px 10px 12px;
+}
+.account-trigger:hover {
+  background: #e9e9e9;
+}
+.account-panel > form,
+.account-panel > section {
+  margin-bottom: 24px;
+}
+.account-panel h3 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+.account-panel .muted {
+  overflow-wrap: anywhere;
+}
+.account-allowance {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 24px 0;
+}
+.account-balance {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.account-balance strong {
+  font-size: 36px;
+}
+.account-balance span {
+  color: var(--muted);
+}
+.account-password {
+  margin-top: 20px;
 }
 .admin-person small {
   color: var(--muted);
@@ -411,6 +444,30 @@ td code {
   gap: 15px;
   flex-wrap: wrap;
 }
+.staff-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.staff-actions .button {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.staff-actions svg {
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .staff-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .staff-actions .button {
+    justify-content: flex-start;
+  }
+}
 .pill {
   display: inline-block;
   font-size: 13px;
@@ -470,6 +527,12 @@ td code {
 }
 .card-heading h3 {
   margin-bottom: 10px;
+}
+.project-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
 }
 .project-card > p {
   color: var(--muted);
@@ -702,6 +765,60 @@ legend {
   background: #f1f1f1;
   margin: 20px 0;
   letter-spacing: 1.5px;
+}
+.authenticator-setup {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin: 24px 0;
+  padding: 24px 0;
+}
+.authenticator-setup h2 {
+  font-size: 23px;
+  line-height: 1.25;
+  margin: 0 0 12px;
+}
+.authenticator-figure {
+  margin: 20px 0;
+  text-align: center;
+}
+.authenticator-qr {
+  background: #fff;
+  padding: 24px;
+  max-width: 284px;
+  margin: 0 auto 14px;
+}
+.authenticator-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.authenticator-figure figcaption {
+  display: grid;
+  gap: 3px;
+  font-size: 15px;
+}
+.authenticator-figure figcaption > span:first-child {
+  color: var(--muted);
+  font-size: 13px;
+}
+.authenticator-account {
+  overflow-wrap: anywhere;
+}
+.authenticator-manual {
+  margin: 20px 0;
+}
+.authenticator-manual summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 10px 0;
+}
+.authenticator-manual summary:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 3px;
+}
+.authenticator-manual .setup-secret {
+  font-size: 13px;
+  margin-bottom: 0;
 }
 .reference {
   color: var(--muted);
@@ -980,4 +1097,43 @@ input[readonly] {
     position: sticky;
     left: 0;
   }
+}
+
+.security-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.import-preview {
+  min-width: 0;
+}
+.file-import {
+  margin-top: 12px;
+}
+.file-import summary {
+  cursor: pointer;
+}
+.file-import label {
+  margin-top: 12px;
+}
+.import-preview details {
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.import-preview summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.import-preview pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
+  font: inherit;
+}
+.prompt-heading {
+  flex-wrap: wrap;
+  gap: 8px;
 }

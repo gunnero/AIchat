@@ -20,10 +20,64 @@ const origin = "https://admin.example.test",
   localOrigin = "http://127.0.0.1:8765";
 const fixtureKey = "sk-proj-" + "synthetic_test_only_".repeat(5);
 const fixturePassword = "A synthetic test password 2026!";
+test("only successful hashed public build assets are cacheable; documents, APIs and errors remain no-store", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "ai-public-assets-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(join(root, "assets"));
+  await writeFile(join(root, "index.html"), "<p>Synthetic shell</p>");
+  await writeFile(
+    join(root, "assets/app-abcdefgh.js"),
+    "// public synthetic asset",
+  );
+  await writeFile(join(root, "assets/app.js"), "// public unversioned asset");
+  const app = await buildServer({
+    vaultKey: randomBytes(32),
+    origin,
+    staticRoot: root,
+    customerRoot: root,
+  });
+  t.after(() => app.close());
+  for (const method of ["GET", "HEAD"]) {
+    const r = await app.inject({
+      method,
+      url: "/backoffice/assets/app-abcdefgh.js?v=1",
+    });
+    assert.equal(r.statusCode, 200);
+    assert.equal(
+      r.headers["cache-control"],
+      "public, max-age=31536000, immutable",
+    );
+    assert.equal(r.headers["set-cookie"], undefined);
+    const unchanged = await app.inject({
+      method,
+      url: "/backoffice/assets/app-abcdefgh.js",
+      headers: { "if-none-match": r.headers.etag },
+    });
+    assert.equal(unchanged.statusCode, 304);
+    assert.equal(
+      unchanged.headers["cache-control"],
+      "public, max-age=31536000, immutable",
+    );
+  }
+  for (const [url, status] of [
+    ["/", 200],
+    ["/backoffice/", 200],
+    ["/backoffice/assets/app.js", 200],
+    ["/backoffice/assets/missing-abcdefgh.js", 404],
+    ["/api/auth/session", 401],
+    ["/api/account", 401],
+  ]) {
+    const r = await app.inject({ url });
+    assert.equal(r.statusCode, status, url);
+    assert.equal(r.headers["cache-control"], "no-store", url);
+  }
+});
 async function fixture(
   t,
   {
     providerCheck = async () => "ok",
+    reportReader,
     dbPath = ":memory:",
     vaultKey = randomBytes(32),
     passwordCheck,
@@ -38,6 +92,7 @@ async function fixture(
     localOrigin,
     clock: () => now,
     providerCheck,
+    reportReader,
     passwordCheck,
     mailer,
     bootstrapHash: digest("synthetic-owner-enrollment-token"),
@@ -69,6 +124,16 @@ async function fixture(
     });
     assert.equal(r.statusCode, 200);
     secret = r.json().secret;
+    const provisioning = new URL(r.json().uri);
+    assert.equal(
+      decodeURIComponent(provisioning.pathname.slice(1)),
+      "AI Kundetypeassistent:Administration",
+    );
+    assert.equal(
+      provisioning.searchParams.get("issuer"),
+      "AI Kundetypeassistent",
+    );
+    assert.equal(provisioning.searchParams.get("secret"), secret);
     const c = r.cookies[0].name + "=" + r.cookies[0].value;
     const result = await req(
       "/setup",
@@ -98,9 +163,9 @@ async function fixture(
     });
     assert.equal(r.statusCode, 200);
     cookie =
-      r.cookies.find((c) => c.name === "bo_session").name +
+      r.cookies.find((c) => c.name === "__Host-ai_session").name +
       "=" +
-      r.cookies.find((c) => c.name === "bo_session").value;
+      r.cookies.find((c) => c.name === "__Host-ai_session").value;
     csrf = r.json().csrf;
     return r;
   }
@@ -158,6 +223,263 @@ async function fixture(
     advance: (ms) => (now += ms),
   };
 }
+const reportingFixtureKey = "sk-admin-synthetic-reporting-only-not-live";
+const reportFixture = (start, end) => ({
+  start,
+  end,
+  currency: "usd",
+  totals: {
+    costUsd: "2.25",
+    inputTokens: 2000,
+    outputTokens: 500,
+    requests: 3,
+  },
+  projects: [
+    {
+      projectRef: "proj_synthetic_test",
+      costUsd: "2.25",
+      inputTokens: 2000,
+      outputTokens: 500,
+      requests: 3,
+    },
+  ],
+  days: [],
+});
+test("usage overview shows configured allowances once, hides all private content and performs no provider reads without a reporting key", async (t) => {
+  let calls = 0;
+  const f = await fixture(t, {
+    reportReader: async () => {
+      calls++;
+      throw new Error("Unexpected provider call");
+    },
+  });
+  assert.equal((await f.req("/usage")).statusCode, 401);
+  await f.owner();
+  const p1 = await f.project("First"),
+    p2 = await f.project("Second"),
+    v1 = await f.prompt(p1),
+    v2 = await f.prompt(p2);
+  assert.equal(
+    (
+      await f.req("/customers", "POST", {
+        name: "Allowance test",
+        email: "allowance@example.test",
+        locale: "en",
+        status: "active",
+        expires: null,
+        allowance: 300,
+        assignments: [
+          { projectId: p1, versionId: v1 },
+          { projectId: p2, versionId: v2 },
+        ],
+      })
+    ).statusCode,
+    200,
+  );
+  const overview = await f.req("/usage");
+  assert.equal(overview.statusCode, 200);
+  assert.equal(overview.json().totalAllowance, 300);
+  assert.equal(overview.json().appTrackingEnabled, false);
+  assert.equal(overview.json().connection, null);
+  assert.equal(
+    overview.json().accounts.find((a) => a.role === "Customer").projects.length,
+    2,
+  );
+  assert.ok(
+    !/protected|password_hash|mfa_secret|instructions|key_secret|Private synthetic instructions/.test(
+      overview.body,
+    ),
+  );
+  assert.equal((await f.req("/usage/openai?month=2026-10")).statusCode, 409);
+  assert.equal(calls, 0);
+});
+test("reporting key save/replace/disconnect are verified, encrypted, revision-bound and require fresh MFA", async (t) => {
+  let reject = false,
+    calls = 0;
+  const f = await fixture(t, {
+    reportReader: async (key, start, end) => {
+      calls++;
+      if (reject) {
+        const e = new Error("sensitive upstream " + key);
+        e.code = "restricted";
+        throw e;
+      }
+      return reportFixture(start, end);
+    },
+  });
+  await f.owner();
+  const payload = {
+    label: "Reporting",
+    apiKey: reportingFixtureKey,
+    revision: 0,
+  };
+  assert.equal(
+    (
+      await f.req("/usage/connection", "POST", {
+        ...payload,
+        apiKey: fixtureKey,
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(calls, 0);
+  assert.equal(
+    (await f.req("/usage/connection", "POST", payload)).statusCode,
+    200,
+  );
+  const stored = f.app.db.prepare("SELECT * FROM usage_reporting").get();
+  assert.notEqual(stored.key_secret, reportingFixtureKey);
+  assert.equal(
+    unseal(f.vaultKey, stored.key_secret, "usage-reporting:1"),
+    reportingFixtureKey,
+  );
+  const dto = (await f.req("/usage")).json();
+  assert.equal(dto.connection.suffix, reportingFixtureKey.slice(-4));
+  assert.equal(dto.connectionRevision, 1);
+  assert.ok(!JSON.stringify(dto).includes(reportingFixtureKey));
+  reject = true;
+  const failed = await f.req("/usage/connection", "POST", {
+    ...payload,
+    apiKey: reportingFixtureKey + "replacement",
+    revision: 1,
+  });
+  assert.equal(failed.statusCode, 502);
+  assert.ok(!failed.body.includes(reportingFixtureKey));
+  assert.equal(
+    f.app.db.prepare("SELECT key_secret FROM usage_reporting").get().key_secret,
+    stored.key_secret,
+  );
+  f.advance(11 * 60 * 1000);
+  const before = calls;
+  const stale = await f.req("/usage/connection", "DELETE", { revision: 1 });
+  assert.equal(stale.statusCode, 403);
+  assert.equal(stale.json().code, "reauth_required");
+  assert.equal(calls, before);
+  await f.req("/auth/reauth", "POST", {
+    code: otp(f.secret).generate({ timestamp: f.now }),
+  });
+  assert.equal(
+    (await f.req("/usage/connection", "DELETE", { revision: 1 })).statusCode,
+    200,
+  );
+  const disconnected = (await f.req("/usage")).json();
+  assert.equal(disconnected.connection, null);
+  assert.equal(disconnected.connectionRevision, 2);
+  assert.equal(
+    f.app.db.prepare("SELECT key_secret FROM usage_reporting").get().key_secret,
+    null,
+  );
+  assert.equal(
+    (await f.req("/usage/connection", "POST", payload)).statusCode,
+    409,
+  );
+  assert.ok(!(await f.req("/audit")).body.includes(reportingFixtureKey));
+});
+test("a report pending across disconnect and reconnect never returns stale organisation totals", async (t) => {
+  let hold = false,
+    finish,
+    started;
+  const wait = new Promise((r) => {
+      finish = r;
+    }),
+    ready = new Promise((r) => {
+      started = r;
+    });
+  const f = await fixture(t, {
+    reportReader: async (key, start, end) => {
+      if (hold) {
+        hold = false;
+        started();
+        await wait;
+      }
+      return reportFixture(start, end);
+    },
+  });
+  await f.owner();
+  const payload = {
+    label: "Old organisation",
+    apiKey: reportingFixtureKey,
+    revision: 0,
+  };
+  assert.equal(
+    (await f.req("/usage/connection", "POST", payload)).statusCode,
+    200,
+  );
+  hold = true;
+  const pending = f.req("/usage/openai?month=2026-10");
+  await ready;
+  assert.equal(
+    (await f.req("/usage/connection", "DELETE", { revision: 1 })).statusCode,
+    200,
+  );
+  assert.equal(
+    (
+      await f.req("/usage/connection", "POST", {
+        ...payload,
+        label: "New organisation",
+        revision: 2,
+      })
+    ).statusCode,
+    200,
+  );
+  finish();
+  const response = await pending;
+  assert.equal(response.statusCode, 409);
+  assert.ok(!response.body.includes("2.25"));
+  assert.equal((await f.req("/usage")).json().connectionRevision, 3);
+  for (const month of ["2026-13", "2027-01", "2020-01"])
+    assert.equal((await f.req("/usage/openai?month=" + month)).statusCode, 400);
+});
+
+test("a pending reporting-key check cannot save after sign-out or MFA freshness expires", async (t) => {
+  for (const event of ["logout", "stale-mfa"]) {
+    let finish,
+      started,
+      hold = false;
+    const pending = new Promise((r) => {
+        finish = r;
+      }),
+      ready = new Promise((r) => {
+        started = r;
+      });
+    const f = await fixture(t, {
+      reportReader: async (key, start, end) => {
+        if (hold) {
+          started();
+          await pending;
+        }
+        return reportFixture(start, end);
+      },
+    });
+    await f.owner();
+    const body = { label: "Reports", apiKey: reportingFixtureKey, revision: 0 };
+    assert.equal(
+      (await f.req("/usage/connection", "POST", body)).statusCode,
+      200,
+    );
+    const before = f.app.db
+      .prepare("SELECT key_secret FROM usage_reporting")
+      .get().key_secret;
+    hold = true;
+    const saving = f.req("/usage/connection", "POST", {
+      ...body,
+      revision: 1,
+      apiKey: reportingFixtureKey + "replacement",
+    });
+    await ready;
+    if (event === "logout") await f.req("/auth/logout", "POST", {});
+    else f.advance(11 * 60 * 1000);
+    finish();
+    const result = await saving;
+    assert.equal(result.statusCode, event === "logout" ? 401 : 403);
+    assert.equal(
+      f.app.db.prepare("SELECT key_secret FROM usage_reporting").get()
+        .key_secret,
+      before,
+    );
+  }
+});
+
 test("all customer, project, prompt, connection and audit reads/writes require a real session", async (t) => {
   const f = await fixture(t);
   for (const path of [
@@ -176,6 +498,9 @@ test("all customer, project, prompt, connection and audit reads/writes require a
     "/prompts",
     "/connections",
     "/connections/" + randomUUID() + "/rotate",
+    "/connections/" + randomUUID() + "/project",
+    "/projects/" + randomUUID() + "/prompts/import",
+    "/projects/" + randomUUID() + "/prompts/link",
   ])
     assert.equal((await f.req(path, "POST", {})).statusCode, 401);
 });
@@ -191,12 +516,33 @@ test("first owner setup is loopback-only, rejects proxy headers and is permanent
     ).statusCode,
     404,
   );
+  for (const header of [
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+    "forwarded",
+  ])
+    assert.equal(
+      (
+        await f.req("/setup", "GET", undefined, {
+          host: "127.0.0.1:8765",
+          origin: localOrigin,
+          "x-setup-token": "synthetic-owner-enrollment-token",
+          [header]: "127.0.0.1",
+        })
+      ).statusCode,
+      404,
+    );
   assert.equal(
     (
-      await f.req("/setup", "GET", undefined, {
-        host: "127.0.0.1:8765",
-        origin: localOrigin,
-        "x-forwarded-for": "127.0.0.1",
+      await f.app.inject({
+        url: "/backoffice/api/setup",
+        remoteAddress: "203.0.113.1",
+        headers: {
+          host: "127.0.0.1:8765",
+          origin: localOrigin,
+          "x-setup-token": "synthetic-owner-enrollment-token",
+        },
       })
     ).statusCode,
     404,
@@ -226,7 +572,7 @@ test("password plus fresh non-replayed MFA is required, cookies are HttpOnly/Sec
     401,
   );
   const login = await f.login();
-  const c = login.cookies.find((c) => c.name === "bo_session");
+  const c = login.cookies.find((c) => c.name === "__Host-ai_session");
   assert.ok(c.httpOnly && c.secure);
   assert.equal(c.sameSite, "Strict");
   assert.equal(
@@ -268,8 +614,14 @@ test("server-side inactivity expires sessions and blocks later writes", async (t
   assert.equal((await f.req("/customers")).statusCode, 401);
   assert.equal((await f.req("/projects", "POST", {})).statusCode, 401);
 });
-test("failed authentication limits persist across requests without exposing account existence", async (t) => {
-  const f = await fixture(t);
+test("failed authentication limits persist across requests and restart without exposing account existence", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "ai-failed-auth-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const options = {
+    dbPath: join(directory, "state.sqlite"),
+    vaultKey: randomBytes(32),
+  };
+  const f = await fixture(t, options);
   await f.setup();
   let response;
   for (let i = 0; i < 5; i++) {
@@ -283,6 +635,18 @@ test("failed authentication limits persist across requests without exposing acco
   assert.equal(
     (
       await f.req("/auth/login", "POST", {
+        email: "missing@example.test",
+        password: "wrong",
+        code: "000000",
+      })
+    ).statusCode,
+    429,
+  );
+  await f.app.close();
+  const restarted = await fixture(t, options);
+  assert.equal(
+    (
+      await restarted.req("/auth/login", "POST", {
         email: "missing@example.test",
         password: "wrong",
         code: "000000",
@@ -401,11 +765,85 @@ test("failed replacement preserves the old key, and a successful replacement inc
     2,
   );
 });
+test("invalid project IDs get specific bilingual guidance before any provider check, and copied whitespace is normalized", async (t) => {
+  const checked = [];
+  const f = await fixture(t, {
+    providerCheck: async (_key, project) => {
+      checked.push(project);
+      return "ok";
+    },
+  });
+  await f.owner();
+  for (const locale of ["en", "da"]) {
+    for (const projectRef of [
+      "key_synthetic_id",
+      "sk-proj-synthetic_wrong_field",
+      "proj_",
+    ]) {
+      const response = await f.req(
+        "/connections",
+        "POST",
+        {
+          label: "Synthetic connection",
+          projectRef,
+          environment: "test",
+          apiKey: fixtureKey,
+        },
+        { "accept-language": locale },
+      );
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().code, "invalid_project_id");
+      assert.equal(
+        response.json().message,
+        locale === "en"
+          ? "Paste the project ID from OpenAI. It starts with proj_."
+          : "Indsæt projektets ID fra OpenAI. Det starter med proj_.",
+      );
+      if (projectRef !== "proj_")
+        assert.ok(!response.body.includes(projectRef));
+      assert.ok(!response.body.includes(fixtureKey));
+    }
+  }
+  assert.equal(checked.length, 0);
+  assert.equal(
+    f.app.db.prepare("SELECT count(*) AS n FROM connections").get().n,
+    0,
+  );
+  const valid = await f.req("/connections", "POST", {
+    label: "Synthetic connection",
+    projectRef: "  proj_valid-id_123  ",
+    environment: "test",
+    apiKey: fixtureKey,
+  });
+  assert.equal(valid.statusCode, 200);
+  assert.deepEqual(checked, ["proj_valid-id_123"]);
+  assert.equal(
+    f.app.db.prepare("SELECT project_ref FROM connections").get().project_ref,
+    "proj_valid-id_123",
+  );
+});
 test("fresh MFA is required after ten minutes for API credential changes", async (t) => {
   const f = await fixture(t);
   await f.owner();
   f.advance(11 * 60 * 1000);
-  assert.equal((await f.req("/connections", "POST", {})).statusCode, 403);
+  const challenge = await f.req(
+    "/connections",
+    "POST",
+    {},
+    { "accept-language": "en" },
+  );
+  assert.equal(challenge.statusCode, 403);
+  assert.equal(challenge.json().code, "reauth_required");
+  const valid = otp(f.secret).generate({ timestamp: f.now });
+  const invalid = String((Number(valid[0]) + 1) % 10) + valid.slice(1);
+  const rejected = await f.req("/auth/reauth", "POST", { code: invalid });
+  assert.equal(rejected.statusCode, 401);
+  assert.equal(rejected.json().code, "invalid_otp");
+  assert.equal((await f.req("/auth/session")).statusCode, 200);
+  assert.equal(
+    (await f.req("/connections", "POST", {})).json().code,
+    "reauth_required",
+  );
   assert.equal(
     (
       await f.req("/auth/reauth", "POST", {
@@ -414,7 +852,22 @@ test("fresh MFA is required after ten minutes for API credential changes", async
     ).statusCode,
     200,
   );
+  const replay = await f.req("/auth/reauth", "POST", { code: valid });
+  assert.equal(replay.statusCode, 401);
+  assert.equal(replay.json().code, "invalid_otp");
   await f.connection();
+  const csrfDenied = await f.req(
+    "/connections",
+    "POST",
+    {},
+    { "x-csrf-token": "invalid" },
+  );
+  assert.equal(csrfDenied.statusCode, 403);
+  assert.equal(csrfDenied.json().code, undefined);
+  f.advance(31 * 60 * 1000);
+  const expired = await f.req("/auth/reauth", "POST", { code: valid });
+  assert.equal(expired.statusCode, 401);
+  assert.equal(expired.json().code, undefined);
 });
 test("paused connections are not checked, and pausing does not delete project links", async (t) => {
   let calls = 0;
@@ -634,13 +1087,18 @@ test("consistent database and vault backups restore encrypted records without th
     ["server/backup.mjs", destination],
     {
       cwd: new URL("..", import.meta.url),
-      env: { ...process.env, STATE_DIR: directory },
+      env: {
+        ...process.env,
+        STATE_DIR: directory,
+        BACKUP_DATABASE_URL: "",
+        LEGACY_SQLITE_BACKUP: "1",
+      },
     },
   );
   const manifest = JSON.parse(
     await readFile(join(destination, "manifest.json"), "utf8"),
   );
-  assert.equal(manifest.schema, 2);
+  assert.equal(manifest.schema, 3);
   for (const name of ["backoffice.sqlite", "vault.key"])
     assert.equal(
       manifest.files[name],
@@ -757,6 +1215,19 @@ async function invitationFixture(t) {
     const raw = mail[index].text.match(/#invite=([A-Za-z0-9_-]{43})/)[1];
     const r = await f.req("/register/begin", "POST", { token: raw });
     assert.equal(r.statusCode, 200);
+    const provisioning = new URL(r.json().uri);
+    assert.equal(
+      decodeURIComponent(provisioning.pathname.slice(1)),
+      "AI Kundetypeassistent:" + r.json().email,
+    );
+    assert.equal(
+      provisioning.searchParams.get("issuer"),
+      "AI Kundetypeassistent",
+    );
+    assert.equal(provisioning.searchParams.get("secret"), r.json().secret);
+    assert.equal(provisioning.searchParams.get("algorithm"), "SHA1");
+    assert.equal(provisioning.searchParams.get("digits"), "6");
+    assert.equal(provisioning.searchParams.get("period"), "30");
     return {
       raw,
       secret: r.json().secret,
@@ -792,7 +1263,8 @@ async function invitationFixture(t) {
     assert.equal(r.statusCode, 200);
     const headers = {
       cookie:
-        "bo_session=" + r.cookies.find((c) => c.name === "bo_session").value,
+        "__Host-ai_session=" +
+        r.cookies.find((c) => c.name === "__Host-ai_session").value,
       "x-csrf-token": r.json().csrf,
     };
     return { headers, session: r.json() };
@@ -948,6 +1420,9 @@ test("Customer registration gives only its own assigned project metadata and can
     "/customers",
     "/projects",
     "/invitations/" + signed.session.id + "/resend",
+    "/connections/" + randomUUID() + "/project",
+    "/projects/" + projectId + "/prompts/import",
+    "/projects/" + projectId + "/prompts/link",
   ])
     assert.equal(
       (await f.req(path, "POST", {}, signed.headers)).statusCode,
@@ -1098,6 +1573,12 @@ test("operator owner reservation is enforced during local enrollment and first a
   };
   const start = await f.req("/setup", "GET", undefined, headers);
   assert.equal(start.json().identity.username, "reservedowner");
+  const provisioning = new URL(start.json().uri);
+  assert.equal(
+    decodeURIComponent(provisioning.pathname.slice(1)),
+    "AI Kundetypeassistent:reserved@example.test",
+  );
+  assert.equal(provisioning.searchParams.get("secret"), start.json().secret);
   const input = {
     name: "Other Owner",
     email: "other@example.test",
@@ -1157,7 +1638,7 @@ test("schema 1 migration preserves the existing first Admin and blocks owner dem
   let db = openDatabase(path);
   assert.equal(
     db.prepare("SELECT max(version) AS n FROM schema_version").get().n,
-    2,
+    3,
   );
   let row = db.prepare("SELECT * FROM admins WHERE id=?").get(id);
   assert.equal(row.protected, 1);
@@ -1199,5 +1680,319 @@ test("expired invitation links cannot begin enrollment, and paused Admin session
   assert.equal(
     (await f.req("/register/begin", "POST", { token: raw })).statusCode,
     400,
+  );
+});
+
+test("a verified connection creates its linked empty project atomically and safely reuses legacy links", async (t) => {
+  let checks = 0;
+  const f = await fixture(t, {
+    providerCheck: async () => {
+      checks++;
+      return "ok";
+    },
+  });
+  await f.owner();
+  const original = await f.project("Test connection");
+  const id = await f.connection();
+  const db = f.app.db;
+  const linked = db
+    .prepare("SELECT * FROM projects WHERE connection_id=?")
+    .get(id);
+  assert.equal(linked.name, "Test connection (2)");
+  assert.equal(linked.enabled, 1);
+  assert.equal(
+    db.prepare("SELECT connection_id FROM projects WHERE id=?").get(original)
+      .connection_id,
+    null,
+  );
+  assert.equal(
+    db.prepare("SELECT count(*) AS n FROM prompt_versions").get().n,
+    0,
+  );
+  const open = () => f.req(`/connections/${id}/project`, "POST", {});
+  assert.deepEqual((await open()).json(), {
+    projectId: linked.id,
+    projectCreated: false,
+  });
+  assert.equal(
+    (
+      await f.req(
+        `/connections/${id}/project`,
+        "POST",
+        {},
+        { "x-csrf-token": "invalid" },
+      )
+    ).statusCode,
+    403,
+  );
+  db.prepare("DELETE FROM projects WHERE id=?").run(linked.id);
+  db.prepare("UPDATE connections SET enabled=0 WHERE id=?").run(id);
+  const results = await Promise.all([open(), open(), open()]);
+  assert.ok(results.every((r) => r.statusCode === 200));
+  assert.equal(new Set(results.map((r) => r.json().projectId)).size, 1);
+  assert.equal(results.filter((r) => r.json().projectCreated).length, 1);
+  const restored = db
+    .prepare("SELECT * FROM projects WHERE connection_id=?")
+    .get(id);
+  assert.equal(restored.enabled, 0);
+  assert.equal(checks, 1, "opening local project must not call provider");
+  assert.equal(
+    (await f.req(`/connections/${randomUUID()}/project`, "POST", {}))
+      .statusCode,
+    404,
+  );
+  db.exec(
+    "CREATE TRIGGER fail_project BEFORE INSERT ON projects BEGIN SELECT RAISE(ABORT,'Synthetic project failure'); END",
+  );
+  const failed = await f.req("/connections", "POST", {
+    label: "Rollback fixture",
+    projectRef: "proj_rollback",
+    environment: "test",
+    apiKey: fixtureKey,
+  });
+  assert.equal(failed.statusCode, 409);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM connections").get().n, 1);
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) AS n FROM audit WHERE action='connection.created'",
+      )
+      .get().n,
+    1,
+  );
+});
+
+test("rejected provider credentials create neither a connection nor a project", async (t) => {
+  const f = await fixture(t, { providerCheck: async () => "invalid" });
+  await f.owner();
+  const r = await f.req("/connections", "POST", {
+    label: "Rejected",
+    projectRef: "proj_rejected",
+    environment: "test",
+    apiKey: fixtureKey,
+  });
+  assert.equal(r.statusCode, 400);
+  assert.equal(
+    f.app.db.prepare("SELECT count(*) AS n FROM projects").get().n,
+    0,
+  );
+  assert.equal(
+    f.app.db.prepare("SELECT count(*) AS n FROM connections").get().n,
+    0,
+  );
+});
+
+test("one-time prompt imports preserve encrypted exact content and provenance, skip retries, and roll back conflicts", async (t) => {
+  const f = await fixture(t, {
+    providerCheck: async () => {
+      throw new Error("No provider calls during local import");
+    },
+  });
+  await f.owner();
+  const projectId = await f.project(),
+    other = await f.project("Other project"),
+    db = f.app.db;
+  const item = {
+    name: "Original prompt",
+    instructions:
+      "  Exact synthetic instructions\r\n<script>literal</script>\n",
+    sourceRef: "pmpt_synthetic v3",
+  };
+  const body = {
+    prompts: [item, { name: "Second", instructions: "Synthetic second" }],
+  };
+  const path = `/projects/${projectId}/prompts/import`;
+  assert.equal(
+    (await f.req(path, "POST", body, { "x-csrf-token": "" })).statusCode,
+    403,
+  );
+  assert.deepEqual((await f.req(path, "POST", body)).json(), {
+    projectId,
+    imported: 2,
+    skipped: 0,
+  });
+  const stored = db
+    .prepare("SELECT * FROM prompt_versions WHERE project_id=? AND name=?")
+    .get(projectId, item.name);
+  assert.equal(stored.version, 1);
+  assert.equal(stored.source_ref, item.sourceRef);
+  assert.equal(stored.checksum, digest(item.instructions));
+  assert.equal(
+    unseal(f.vaultKey, stored.instructions, "prompt:" + stored.id),
+    item.instructions,
+  );
+  assert.ok(!stored.instructions.includes("Exact synthetic"));
+  assert.ok(!(await f.req("/audit")).body.includes(item.instructions));
+  assert.deepEqual((await f.req(path, "POST", body)).json(), {
+    projectId,
+    imported: 0,
+    skipped: 2,
+  });
+  assert.equal(
+    (
+      await f.req(path, "POST", {
+        prompts: [
+          { name: "Must roll back", instructions: "Synthetic" },
+          { ...item, instructions: "Changed" },
+        ],
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) AS n FROM prompt_versions WHERE name='Must roll back'",
+      )
+      .get().n,
+    0,
+  );
+  const results = await Promise.all(
+    [1, 2].map(() => f.req(`/projects/${other}/prompts/import`, "POST", body)),
+  );
+  assert.deepEqual(results.map((r) => r.json().imported).sort(), [0, 2]);
+  assert.equal(
+    db.prepare("SELECT count(*) AS n FROM prompt_versions").get().n,
+    4,
+  );
+  for (const bad of [
+    { ...body, apiKey: fixtureKey },
+    { projectRef: "proj_wrong", ...body },
+    { prompts: [{ name: "ID only", sourceRef: "pmpt_synthetic" }] },
+    { prompts: [{ name: "Empty", instructions: "  " }] },
+    { prompts: [item, { ...item, name: "ORIGINAL PROMPT" }] },
+    { prompts: [{ name: "Too long", instructions: "x".repeat(48001) }] },
+  ])
+    assert.equal((await f.req(path, "POST", bad)).statusCode, 400);
+  assert.equal(
+    (
+      await f.req(path, "POST", {
+        prompts: Array.from({ length: 6 }, (_, i) => ({
+          name: String(i),
+          instructions: "x".repeat(48000),
+        })),
+      })
+    ).statusCode,
+    413,
+  );
+  assert.equal(
+    (await f.req(`/projects/${randomUUID()}/prompts/import`, "POST", body))
+      .statusCode,
+    404,
+  );
+});
+
+test("Platform prompt links need no instructions, stay scoped/idempotent and cannot be edited as app instructions", async (t) => {
+  let checks = 0;
+  const f = await fixture(t, {
+    providerCheck: async () => {
+      checks++;
+      return "ok";
+    },
+  });
+  await f.owner();
+  const connectionId = await f.connection(),
+    db = f.app.db;
+  const projectId = db
+    .prepare("SELECT id FROM projects WHERE connection_id=?")
+    .get(connectionId).id;
+  const other = await f.project("Second app project", connectionId),
+    unconnected = await f.project("No connection");
+  const path = `/projects/${projectId}/prompts/link`,
+    payload = {
+      name: "Platform assistant",
+      providerPromptId: "pmpt_synthetic",
+    };
+  assert.equal(
+    (await f.req(path, "POST", payload, { "x-csrf-token": "bad" })).statusCode,
+    403,
+  );
+  const results = await Promise.all([
+    f.req(path, "POST", payload),
+    f.req(path, "POST", payload),
+  ]);
+  assert.ok(results.every((r) => r.statusCode === 200));
+  assert.equal(results.filter((r) => r.json().created).length, 1);
+  assert.equal(new Set(results.map((r) => r.json().id)).size, 1);
+  const id = results[0].json().id;
+  const stored = db.prepare("SELECT * FROM prompt_versions WHERE id=?").get(id);
+  assert.equal(unseal(f.vaultKey, stored.instructions, "prompt:" + id), "");
+  assert.equal(stored.source_ref, payload.providerPromptId);
+  const list = (await f.req("/prompts")).json().find((p) => p.id === id);
+  assert.equal(list.source_kind, "platform");
+  assert.equal(list.provider_prompt_id, payload.providerPromptId);
+  assert.equal(list.version_policy, "default");
+  assert.ok(!Object.hasOwn(list, "instructions"));
+  const detail = (await f.req("/prompts/" + id)).json();
+  assert.equal(detail.source_kind, "platform");
+  assert.ok(!Object.hasOwn(detail, "instructions"));
+  assert.equal(
+    (
+      await f.req("/prompts", "POST", {
+        projectId,
+        promptId: stored.prompt_id,
+        name: stored.name,
+        instructions: "Must not override Platform",
+        sourceRef: "",
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (await f.req(`/projects/${other}/prompts/link`, "POST", payload))
+      .statusCode,
+    200,
+  );
+  assert.equal(
+    (await f.req(`/projects/${unconnected}/prompts/link`, "POST", payload))
+      .statusCode,
+    400,
+  );
+  assert.equal(
+    (await f.req(`/projects/${randomUUID()}/prompts/link`, "POST", payload))
+      .statusCode,
+    404,
+  );
+  for (const providerPromptId of [
+    "proj_wrong",
+    "https://example.test/pmpt_x",
+    "pmpt_",
+    "pmpt_" + "x".repeat(181),
+  ])
+    assert.equal(
+      (await f.req(path, "POST", { ...payload, providerPromptId })).statusCode,
+      400,
+    );
+  for (const extra of [
+    { instructions: "Duplicate work" },
+    { version: "7" },
+    { connectionId: randomUUID() },
+  ])
+    assert.equal(
+      (await f.req(path, "POST", { ...payload, ...extra })).statusCode,
+      400,
+    );
+  assert.equal(
+    (
+      await f.req(path, "POST", {
+        ...payload,
+        providerPromptId: "pmpt_another",
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    db.prepare("SELECT count(*) AS n FROM platform_prompt_links").get().n,
+    2,
+  );
+  assert.equal(
+    checks,
+    1,
+    "saving a reference must not pretend to test prompt access",
+  );
+  assert.throws(() =>
+    db
+      .prepare("UPDATE projects SET connection_id=NULL WHERE id=?")
+      .run(projectId),
   );
 });
