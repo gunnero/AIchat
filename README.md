@@ -2,11 +2,13 @@
 
 An invitation-only English/Danish customer workspace and administrator backoffice for Helle Bodeholt.
 
-- [Customer workspace](https://ai.igurl.dk/): persistent private project histories and saved messages, project themes, personal profile and allowance. Live AI replies, sharing and paid-token accounting remain disabled.
-- [Administration](https://ai.igurl.dk/backoffice/): invitation-only accounts with mandatory password/TOTP sign-in, project/prompt assignments, encrypted project/reporting credentials and usage-report connection. Staff have access only to their own assigned workspace, never other users' unshared chats.
-- [Synthetic demonstration](https://ai.igurl.dk/demo/): fictional in-memory interaction examples. It resets on reload and sends no real email or AI requests.
+**Local-only status — 20 October 2026:** the owner requested removal of the hosted installation at ai.igurl.dk. The latest application source remains here on the Mac, based on recovery release `51c1ff57a6dc6491c98f021320ff9b6778dad888`. A verified encrypted copy of the retired server is stored separately from this repository. DNS removal is deferred by the owner. See the [local handover and recovery record](docs/local-only-handoff.md). Earlier deployment documents describe historical installations.
 
-The real application is in `backoffice/`: React/TypeScript UI, JavaScript/Fastify API, Node **24.22**, PostgreSQL **18**, schema **8**, separate non-owner control/chat roles and forced row policies. SQLite exists only for legacy fixtures and one-time verified import; production never falls back to it. The original demonstration remains in `app/` with its production-build guard.
+- **Customer workspace** (`/` in the real application): persistent private project histories and saved messages, project themes, personal profile and allowance. Live AI replies, sharing and paid-token accounting remain disabled.
+- **Administration** (`/backoffice/` in the real application): invitation-only accounts with mandatory password/TOTP sign-in, project/prompt assignments, encrypted project/reporting credentials and usage-report connection. Staff have access only to their own assigned workspace, never other users' unshared chats.
+- [Local synthetic demonstration](http://127.0.0.1:4173/): fictional in-memory interaction examples. It resets on reload and sends no real email or AI requests. This demo is separate from the complete real application in `backoffice/`.
+
+The real application is in `backoffice/`: React/TypeScript UI, JavaScript/Fastify API, Node **24.22**, PostgreSQL **18**, schema **9**, separate non-owner control/chat roles and forced row policies. SQLite exists only for legacy fixtures and one-time verified import; production never falls back to it. The original demonstration remains in `app/` with its production-build guard.
 
 Follow the [current workspace and PostgreSQL recovery instructions](docs/customer-workspace.md), [automated backups/monitoring runbook](docs/operations.md) and [deployment history](docs/customer-workspace-deployment.md). Automated encrypted copies on the attached server disk do not establish off-server disaster recovery or wider GDPR readiness.
 
