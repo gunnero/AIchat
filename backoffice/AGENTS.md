@@ -1,5 +1,9 @@
 # Real backoffice
 
+## Hosting status — 20 October 2026
+
+The owner requested removal of the ai.igurl.dk hosted installation while preserving the complete project on the Mac. Hosting, project services, dedicated database and server-side project copies were retired after a verified encrypted transfer. DNS cleanup is deferred by the owner. Keep current work local; a future deployment requires a new user instruction. Do not assume the historical jig paths/services still exist. Real retired accounts/chats and credentials remain in the separate encrypted recovery archive, never in development fixtures or frontend files. See `../docs/local-only-handoff.md`. The implementation/security requirements below remain applicable to local development and future authorized deployment.
+
 This is a separate, persistent administrator application. Keep `../app/` as the synthetic public demo and retain its production build guard.
 
 The customer-workspace plan approved on 18 October moves production to Node 24.22 LTS, Fastify and PostgreSQL 18 for accounts, assignments and private history. SQLite remains only for legacy behavior fixtures and verified import. Production must fail closed without PostgreSQL, never fall back to SQLite. Use separate ai_control and ai_chat roles; neither may own tables, be a superuser, inherit ai_owner or bypass row policies. ai_migrator is operator-only. Pin customer/project/prompt versions. Admins may use their own assigned private workspace; their role must never grant access to another user’s unshared chats. Live AI, sharing, usage/billing and broader GDPR release requirements remain separate milestones.
